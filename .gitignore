@@ -1,0 +1,7 @@
+*__pycache__*
+_data/
+tmp/
+tree_crown_delineation/
+**.pptx
+**.drawio
+

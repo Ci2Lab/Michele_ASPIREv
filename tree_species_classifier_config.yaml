@@ -1,0 +1,22 @@
+config_AE:
+  autoencoder_name: AE_2
+  encoder_name: E_2
+  method: ae  
+config_relabeling:
+  plot_uMAP: True
+  number_patches:
+    deciduous: 2000
+    pines: 2000
+    spruces: 2000
+  radius_patch: 6
+  tree_types_legend:
+    deciduous: 5
+    pines: 2
+    spruces: 1
+config_training:
+    architecture: unet
+    patch_number: 10000
+    patch_radius: 40
+    model_name: Unet_species_3
+    n_epochs: 200
+    lr: 0.001

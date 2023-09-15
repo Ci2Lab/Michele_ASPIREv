@@ -1,0 +1,8 @@
+   
+config_training:
+    architecture: unet
+    patch_number: 20000
+    patch_radius: 40
+    model_name: Unet_segmenter_1_2
+    n_epochs: 200
+    lr: 0.001
