@@ -68,8 +68,10 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 
 ## Vegetation segmentation 
 
-<img src="images/tree_top.jpg" width="200">
-<img src="images/tree_segmentation.png" width="200">
+<p float="left">
+<img src="images/tree_top.jpg" width="200"/>
+<img src="images/tree_segmentation.png" width="200"/>
+</p>
 
 [Code](/Block_tree_segmentation.ipynb)
 
