@@ -77,16 +77,20 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 
 ## Tree species classification
 
-<img src="images/tree_top.jpg" width="200">
-<img src="images/tree_species.png" width="200">
+<p float="left">
+<img src="images/tree_top.jpg" width="200"/>
+<img src="images/tree_species.png" width="200"/>
+</p>
 
 [Code](/Block_tree_species_classification.ipynb)
 
 
 ## 3D modeler
 
-<img src="images/tree_top.jpg" width="200">
-<img src="images/nDSM.png" width="200">
+<p float="left">
+<img src="images/tree_top.jpg" width="200"/>
+<img src="images/nDSM.png" width="200"/>
+</p>
 
 [Code]()
 
