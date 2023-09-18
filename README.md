@@ -17,7 +17,7 @@ VIRASS (Vegetation and Infrastructures Risk Assessment through Satellite Scannin
 - individual tree crown delineation
 - tree inventory generation
 - risk calculations 
-and utilities for dealing with geo-spatial data.
+- and utilities for dealing with geo-spatial data.
 
 It is built on top of standard geo-libraries such as rasterio, geopandas, and shapely. The computer vision and machine learning modules are instead built on top of tensorflow, keras and skimage.
 
@@ -27,24 +27,22 @@ It is built on top of standard geo-libraries such as rasterio, geopandas, and sh
  Vegetation along the infrastructure lines is one of the major causes of outages, especially along roadways and power lines. Trees can fall after strong winds, disrupting the lines and blocking the roads. If a tree is growing too close to the power line, it might also trigger wildfires.
  Traditional approaches based on visual inspections are extremely time-consuming and very costly.
  
- *VIRASS* aims to ease the process of infrastructure monitoring, providing tools to characterize vegetation and calculate thread posing to nearby infrastructure.
+ *VIRASS* aims to ease the process of infrastructure monitoring, providing tools to characterize vegetation and calculate threat posing to nearby infrastructure.
   
 
 
 # Installation
 
-VIRASS can be install using either pip
-
-## pip
+VIRASS can be install using pip (*TODO*)
 
 ```
 pip install virass
 ```
 
-# Usage
+# Basic usage
 
-VIRASS is designed to be very easy to use. Implementing many functions "under the curtains". 
-The code snipper below provides the code to segment a satellite image and detect trees, with few lines of code.
+VIRASS is designed to be very easy to use, implementing many functions "under the curtains". 
+The code snippet below provides the code to segment a satellite image and detect trees, with few lines of code.
 
 ```Python
 import VIRASS as ges
@@ -63,7 +61,7 @@ tree_map_predicted = tree_segmenter.generate_tree_map(SAT_image_input)
 ```
 
 
-# Try Demos using Jupyter Notebook
+# Try demos using Jupyter Notebook
 
 The following Jupyter notebooks show how to use VIRASS for particular tasks, exlpaining step by step the functions. 
 
