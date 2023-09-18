@@ -4,4 +4,10 @@ tmp/
 tree_crown_delineation/
 **.pptx
 **.drawio
+**.sty
+**.aux
+**.log
+**.tex
+**.gz
 
+docs/DL_architectures/layers/
