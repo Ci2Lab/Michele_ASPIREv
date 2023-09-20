@@ -52,7 +52,7 @@ def convert_to_channel_last(SAT_image : np.array):
     """
     assert len(SAT_image.shape) == 3
     if is_channel_first(SAT_image):
-        print("Tranposing dimensions: \n")
+        print("Converting to channel_last:")
         print(str(SAT_image.shape))
         SAT_image = np.transpose(SAT_image, (1,2,0))
         print("--> " + str(SAT_image.shape))
@@ -68,7 +68,7 @@ def convert_to_channel_first(SAT_image : np.array):
     """
     assert len(SAT_image.shape) == 3
     if is_channel_last(SAT_image):
-        print("Tranposing dimensions: \n")
+        print("Converting to first:")
         print(str(SAT_image.shape))
         SAT_image = np.transpose(SAT_image, (2,0,1))
         print("--> " + str(SAT_image.shape))
