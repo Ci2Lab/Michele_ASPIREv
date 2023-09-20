@@ -1,0 +1,3 @@
+model_name: "default"
+model_architecture: "unet"
+n_patches: 10000
