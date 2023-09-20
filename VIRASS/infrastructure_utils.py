@@ -47,14 +47,17 @@ def scan_lines(infr_line : geopandas.GeoDataFrame, distance, save_output = False
             
             
 @utils.measure_time            
-def generate_tree_inventory(points_along_line : pandas.DataFrame, SAT_map, meta_data, radius,
+def generate_tree_inventory(points_along_line : pandas.DataFrame, SAT_map, meta_data, radius_meters,
                             tree_mask, tree_species_map = None, nDSM_map = None, mode = "multiscale"):
+    
+    METERS_to_PIXEL_ratio = meta_data['transform'][0]
+    radius = int(radius_meters / METERS_to_PIXEL_ratio) # pixel
     
     print("\n-- Generating tree inventory ")
     crowns = []
     for index in range(0, len(points_along_line)):
         
-        print("Extracting point {} of {}".format(index, len(points_along_line)))
+        # print("Extracting point {} of {}".format(index, len(points_along_line)))
         point = (points_along_line.iloc[index].x, points_along_line.iloc[index].y)
         
         if geo_utils.is_point_valid(point, meta_data, radius):
@@ -85,15 +88,13 @@ def generate_tree_inventory(points_along_line : pandas.DataFrame, SAT_map, meta_
                                                                         save_output = False, 
                                                                         output_filename = "crowns" + str(index) + ".gpkg"))
                     
-    crowns = pandas.concat(crowns)
+    crowns = pandas.concat(crowns, copy = False)
     crowns = tree_utils.refine_crowns(crowns, meta_data)
     return crowns
     # crowns.to_file("crowns.gpkg", driver="GPKG") 
     
     
-    
-def calculate_risk(point_along_line, df_crows):
-    pass
+ 
             
             
             
