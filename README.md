@@ -3,9 +3,6 @@
 [![Github Actions](https://github.com/weecology/DeepForest/actions/workflows/Conda-app.yml/badge.svg)](https://github.com/weecology/DeepForest/actions/workflows/Conda-app.yml)
 [![Documentation Status](https://readthedocs.org/projects/deepforest/badge/?version=latest)](http://deepforest.readthedocs.io/en/latest/?badge=latest)
 [![Version](https://img.shields.io/pypi/v/DeepForest.svg)](https://pypi.python.org/pypi/DeepForest)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2538143.svg)](https://doi.org/10.5281/zenodo.2538143)
-
-
 
 
 ![img](docs/logo.png)
@@ -69,17 +66,19 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 ## Vegetation segmentation 
 
 <p float="left">
-<img src="images/tree_top.jpg" width="200"/>
-<img src="images/tree_segmentation.png" width="200"/>
+<img src="images/readme/tree_top.jpg" width="200"/>
+<img src="images/readme/tree_segmentation.png" width="200"/>
 </p>
 
 [Code](/Block_tree_segmentation.ipynb)
 
 ## Tree species classification
 
+[![10.1109/TGRS.2022.3210275](http://img.shields.io/badge/DOI-10.1101/2021.01.08.425840-B31B1B.svg)](http://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=36)
+
 <p float="left">
-<img src="images/tree_top.jpg" width="200"/>
-<img src="images/tree_species.png" width="200"/>
+<img src="images/readme/tree_top.jpg" width="200"/>
+<img src="images/readme/tree_species.png" width="200"/>
 </p>
 
 [Code](/Block_tree_species_classification.ipynb)
@@ -88,8 +87,8 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 ## 3D modeler
 
 <p float="left">
-<img src="images/tree_top.jpg" width="200"/>
-<img src="images/nDSM.png" width="200"/>
+<img src="images/readme/tree_top.jpg" width="200"/>
+<img src="images/readme/nDSM.png" width="200"/>
 </p>
 
 [Code]()
@@ -97,7 +96,7 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 
 ## Risk calculation
 
-<img src="images/crowns_example.png" width="600">
+<img src="images/readme/crowns_example.png" width="600">
 
 [Code]()
 
