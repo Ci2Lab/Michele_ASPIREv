@@ -335,11 +335,25 @@ def add_tree_species(df_crowns, tree_species_map_file):
     df_crowns['tree_species'] = [x[0] for x in src.sample(coords)]
     src.close()
     
-    # Sometimes the tree_species_map donn't have a specie label if if a tree crown is detected.
+    # Sometimes the tree_species_map don't have a specie label when a tree crown is detected.
     # This is because the <TreeSpecieClassifier> is trained separately from the <TreeSegmenter>, and sometimes
     # it misses some trees. 
     # Therefore, tree crowns without a specie label are assigned a species based on the surrouding species.
-    # TODO: Assign a tree specie
+    
+    valid_points = df_crowns[df_crowns['tree_species'].isin([1, 2, 3])]
+    invalid_points = df_crowns[df_crowns['tree_species'] == 0]
+
+
+    # Build a KD-tree using the coordinates of the valid points
+    from scipy.spatial import cKDTree
+    valid_tree = cKDTree(valid_points.geometry.centroid.apply(lambda geom: (geom.centroid.x, geom.centroid.y)).tolist())
+
+    # For each invalid point, find the closest valid point using the KD-tree and assign its 'tree_species' value:
+    for idx, invalid_point in invalid_points.iterrows():
+        nearest_idx = valid_tree.query([invalid_point.geometry.centroid.x, invalid_point.geometry.centroid.y], k=1)[1]
+        nearest_valid_point = valid_points.iloc[nearest_idx]
+        df_crowns.at[idx, 'tree_species'] = nearest_valid_point['tree_species']
+    
     return df_crowns
 
 
