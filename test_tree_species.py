@@ -1,4 +1,4 @@
-import GridEyeS_lib as ges
+import VIRASS as ges
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -30,4 +30,4 @@ tree_species_classifier.build_model()
 tree_species_map_pred = tree_species_classifier.generate_tree_species_map(SAT_image)
 
 # tree_species_map_quantized = tree_species_classifier.quantize_tree_species_map(tree_species_map_pred)
-ges.io.export_GEOtiff("_data/trees/tree_species/R_refined.tif", tree_species_map_pred, meta_data)
+ges.io.export_GEOtiff("_data/trees/tree_species/R_refined_2.tif", tree_species_map_pred, meta_data)
