@@ -339,7 +339,7 @@ class Autoencoder():
         return X
     
     
-    def _train(self, X, epochs = 100): #60        
+    def _train(self, X, epochs = 60): #60        
         optimizer = keras.optimizers.Adam(learning_rate=0.001)
         loss = keras.losses.MeanSquaredError()
         self.autoencoder.compile(optimizer=optimizer, loss=loss)
@@ -350,7 +350,7 @@ class Autoencoder():
                 return lr
             else:
                 return lr * np.math.exp(-0.01)
-        history = self.autoencoder.fit(_X, _X,  batch_size=128, epochs=epochs)#, callbacks=[LearningRateScheduler(scheduler)])
+        history = self.autoencoder.fit(_X, _X,  batch_size = 128, epochs=epochs)#, callbacks=[LearningRateScheduler(scheduler)])
         return history
     
     def compute_features(self, patches):
@@ -519,7 +519,68 @@ def spatial_costraint(array, patch_size, group_size):
 
 
 
-                    
+
+
+class TestClass(RSClassifier.RSClassifier):
+    def __init__(self, config_file: str = 'config.yml'):
+        super().__init__()
+        
+        # Check if the file exists
+        if not os.path.exists(config_file):
+            config_file = utils.open_file("Open configuration file (yaml format)")
+        
+        # Check if the file has a YAML extension
+        if os.path.splitext(config_file)[1].lower() == '.yaml':
+            self.config = utils.read_config(config_file)
+        else:
+            raise ValueError("Wrong format for the configuration file (must be YAML)")
+
+
+        # Define a dictionary of default values
+        default_values = {
+            'config_AE': {
+                'autoencoder_name': 'Default_AE',
+                'encoder_name': 'Default_E',
+                'method': 'Default_method',
+            },
+            'config_relabeling': {
+                'plot_uMAP': False,
+                'number_patches': {
+                    'deciduous': 2000,
+                    'pines': 2000,
+                    'spruces': 2000
+                },
+                'radius_patch': 6,
+                'tree_types_legend': {
+                    'deciduous': 5,
+                    'pines': 2,
+                    'spruces': 1
+                },
+                'n_cluster': 30,
+            },
+            'config_training': {
+                'architecture': 'Default_architecture',
+                'patch_number': 20000,
+                'patch_radius': 40,
+                'model_name': 'Default_model',
+                'n_epochs': 200,
+                'lr': 0.001,
+            }
+        }
+
+        # Update the loaded configuration with missing keys and default values
+        self.config = self.update_with_defaults(self.config, default_values)
+
+    def update_with_defaults(self, config, defaults):
+        for key, value in defaults.items():
+            if key not in config:
+                config[key] = value
+            elif isinstance(value, dict):
+                config[key] = self.update_with_defaults(config[key], value)
+        return config
+
+               
+   
             
 
 class TreeSpeciesClassifier(RSClassifier.RSClassifier):
@@ -535,14 +596,20 @@ class TreeSpeciesClassifier(RSClassifier.RSClassifier):
     
     def __init__(self, config_file: str = 'config.yml'):
         super().__init__()
+        
+        # Check if the file exists
         if not os.path.exists(config_file):
             config_file = utils.open_file("Open configuration file (yaml format)")
-            
-        if config_file.split('.')[1] == 'yaml':
+        
+        # Check if the file has a YAML extension    
+        if os.path.splitext(config_file)[1].lower() == '.yaml':
             self.config = utils.read_config(config_file)
         else:
             raise ValueError("Wrong format for the configuration file")
-                    
+            
+        
+    # TODO: Set default values in case some important parameters are not passed in by the config.yaml
+                
     
     
     def _fix_label(self, R_map):
@@ -595,7 +662,7 @@ class TreeSpeciesClassifier(RSClassifier.RSClassifier):
             tSNE_featureVisualization(features_scaled, labels)
 
         # Relabel features based on their position in the feature space
-        n_clusters = 30
+        n_clusters = self.config['config_relabeling']['n_cluster']
         kemans, clusters_labels = clustering(features_scaled, n_clusters)
 
         # Semantic costraint:
@@ -645,7 +712,6 @@ class TreeSpeciesClassifier(RSClassifier.RSClassifier):
         else:  
             
             if architecture == "unet":                                                                
-                # model = architectures.Unet_2(input_shape = input_shape)
                 model = architectures.unet(input_shape = input_shape, n_classes = 4)
             
             else:
@@ -689,6 +755,9 @@ class TreeSpeciesClassifier(RSClassifier.RSClassifier):
             my_callbacks = [tf.keras.callbacks.EarlyStopping(monitor = 'val_loss', patience = 20),
                             tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=0.00001, verbose = 1)] #10
             
+            
+            # TODO: Re-implement the pipeline using the tensorflow.keras.utils.Sequence to deal with GPU memory issues 
+            # https://stackoverflow.com/questions/62916904/failed-copying-input-tensor-from-cpu-to-gpu-in-order-to-run-gatherve-dst-tensor
             history = self.DLmodel.fit(X_train, y_train, 
                           epochs = self.config['config_training']['n_epochs'], 
                           batch_size = 128,
