@@ -74,14 +74,14 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 
 ## Tree species classification
 
-[![10.1109/TGRS.2022.3210275](http://img.shields.io/badge/DOI-10.1101/2021.01.08.425840-B31B1B.svg)](http://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=36)
+[![10.1109/TGRS.2022.3210275](http://img.shields.io/badge/DOI-10.1101/2021.01.08.425840-B31B1B.svg)](https://ieeexplore.ieee.org/abstract/document/9905623)
 
 <p float="left">
 <img src="images/readme/tree_top.jpg" width="200"/>
 <img src="images/readme/tree_species.png" width="200"/>
 </p>
 
-[Code](/Block_tree_species_classification.ipynb)
+[Code - TODO](/Block_tree_species_classification.ipynb)
 
 
 ## 3D modeler
@@ -98,7 +98,17 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 
 <img src="images/readme/crowns_example.png" width="600">
 
-[Code]()
+[Code - TODO]() 
+
+
+# Licensing 
+
+
+# Disclaimer
+
+This library is made available under an open-science paradigm with the aspiration that it proves to be beneficial. Nevertheless, the author does not provide any assurance of its merchantability or fitness for a specific purpose.
+
+If you have suggestions or improvements to suggest, feelfree to contact me at: michele.gazzea@gmail.com
 
 
 
