@@ -299,6 +299,7 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
     # Compute the tree crowns at the larger radius
     df_large = extract_tree_crown(SAT_map, tree_mask, crown_element = crown_elements[0], 
                                      meta_data = meta_data, verbose = verbose, save_output = False)
+    
     # For each crown structuring element (=scale)
     for radius_index in range(1, len(crown_elements)):       
         df_small = extract_tree_crown(SAT_map, tree_mask, crown_element = crown_elements[radius_index], 
@@ -325,7 +326,7 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
         
         
 def add_tree_species(df_crowns, tree_species_map_file):
-    """Add tree species as an additional field in the df_crowns (pandas DatasFrame)"""
+    """Add tree species as an additional field in the df_crowns (pandas DataFrame)"""
     
     src = rasterio.open(tree_species_map_file)
     pts = df_crowns[['pointX', 'pointY']] 
@@ -358,7 +359,7 @@ def add_tree_species(df_crowns, tree_species_map_file):
 
 
 def add_tree_height(df_crowns, nDSM):
-    """Add tree height as an additional field in the df_crowns (pandas DatasFrame)"""
+    """Add tree height as an additional field in the df_crowns (pandas DataFrame)"""
     
     src = rasterio.open(nDSM)
     pts = df_crowns[['pointX', 'pointY']] 
@@ -368,6 +369,31 @@ def add_tree_height(df_crowns, nDSM):
     df_crowns['tree_height'] = [x[0] for x in src.sample(coords)]
     src.close()
     return df_crowns
+
+
+
+
+def calculate_critical_wind_speed_breakage(df_crowns):
+    
+    def _add_MOR(df_crowns):
+        """ 
+        Assign modulus of rupture (MOR) to different species. MOR are expressed in MPa.
+        Values taken from: https://www.wood-database.com/
+        """
+        df_crowns['MOR'] = 0
+        df_crowns.loc[df_crowns['tree_species'] == 1, 'MOR'] = 63
+        df_crowns.loc[df_crowns['tree_species'] == 2, 'MOR'] = 83.3
+        df_crowns.loc[df_crowns['tree_species'] == 3, 'MOR'] = 114.5
+        return df_crowns
+    
+    
+    def _estimate_DBH(d_crowns):
+        """
+        Estimate the tree's diameter at breast height (DBH) using allometric equations for each species.
+        """
+        
+        
+
        
         
         
