@@ -22,6 +22,16 @@ from tensorflow import keras
 from keras.callbacks import LearningRateScheduler
 
 
+class TreeSpecie():
+    def __init__(self, name_species = "", color_to_display = "k", legend = 0, n_patches = 1000):        
+        self._name_species = name_species
+        self._color_to_display = color_to_display
+        self._n_patches = n_patches
+        self._legend = legend
+        # TODO: in future, consider using this class to control the behaviour of the species 
+        # e.g., how to plot them in the UMAP, how many patches to extract, etc. 
+        
+    
 def pre_process_R_ref(R_ref, source = "NIBIO"):
     """
     Pre-process the tree reference dataset. 
@@ -874,11 +884,11 @@ class TreeSpeciesClassifier(RSClassifier.RSClassifier):
             return stiched_pred_map
         
         
-    def quantize_tree_species_map(self, tree_species_map):
-        """ Convert each pixel to a single value (=class)
-        """
-        tree_species_map_quantized = np.argmax(tree_species_map, axis = -1).astype('uint8')
-        return tree_species_map_quantized
+def quantize_tree_species_map(tree_species_map):
+    """ Convert each pixel to a single value (=class)
+    """
+    tree_species_map_quantized = np.argmax(tree_species_map, axis = -1).astype('uint8')
+    return tree_species_map_quantized
 
     
 
