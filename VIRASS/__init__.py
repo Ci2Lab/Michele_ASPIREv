@@ -7,6 +7,7 @@ from . import io
 from . import RSClassifier
 from . import tree_segmentation
 from . import tree_species_classification
+from . import nDSM_estimation
 from . import utils
 from . import geo_utils
 from . import architectures
