@@ -1,0 +1,8 @@
+   
+config_training:
+    architecture: unet_attention
+    patch_number: 20000
+    patch_radius: 40
+    model_name: Unet_attention_height_modeler_1
+    n_epochs: 200
+    lr: 0.001
