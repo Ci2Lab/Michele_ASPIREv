@@ -217,8 +217,8 @@ class RSClassifier():
                 Y = np.asarray(Y)
                 
                 if save_patch:
-                    np.save(self._config['saving_folder'] + "X_patches", X)
-                    np.save(self._config['saving_folder'] + "y_patches", Y)
+                    np.save(self.working_dir + "X_patches", X)
+                    np.save(self.working_dir + "y_patches", Y)
                     
                 if export_patch_locations:
                     # translate rows and cols value into geographical locations
@@ -232,7 +232,7 @@ class RSClassifier():
                         gdf1 = gpd.GeoDataFrame(df1, geometry='geometry', crs="EPSG:32632") # 32632;  25832
                         # Create Polygon geometry to show the patches as rectangles
                         gdf1['geometry'] = gdf1.geometry.buffer( int(radius*self.meta_data['transform'][0]), cap_style = 3)
-                        gdf1.to_file(self.config['working_folder'] + "patches_locations.shp")
+                        gdf1.to_file(self.working_dir + "patches_locations.shp")
                     
                     else:
                         print("Metadata is not defined. Impossible to locate patches.")
