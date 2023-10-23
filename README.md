@@ -81,7 +81,7 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 <img src="images/readme/tree_species.png" width="200"/>
 </p>
 
-[Code - TODO](/Block_tree_species_classification.ipynb)
+[Code](/Block_tree_species_classification.ipynb)
 
 
 ## 3D modeler
@@ -91,14 +91,14 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 <img src="images/readme/nDSM.png" width="200"/>
 </p>
 
-[Code]()
+[Code]
 
 
 ## Risk calculation
 
 <img src="images/readme/crowns_example.png" width="600">
 
-[Code - TODO]() 
+[Code - TODO] 
 
 
 # Licensing 
