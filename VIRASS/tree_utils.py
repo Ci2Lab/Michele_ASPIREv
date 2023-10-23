@@ -15,6 +15,10 @@ from shapely.geometry import Point
 from scipy.spatial import distance_matrix
 import rasterio
 
+from . import geo_utils
+
+# To avoid warning: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+pandas.options.mode.chained_assignment = None  # default='warn'
 
 def extract_tree_crown(SAT_map, tree_mask, crown_element = 4, meta_data = None, 
                        scale_analysis = False, plot = False, verbose = True,
@@ -48,6 +52,10 @@ def extract_tree_crown(SAT_map, tree_mask, crown_element = 4, meta_data = None,
     pixel_to_meter = meta_data['transform'][0]
     trees = SAT_map * tree_mask
     
+    if plot:
+        plt.figure(); plt.imshow(trees)
+        plt.axis('off')
+    
     if scale_analysis:
         # Scale analysis: Just to design the Gaussian filter, to determine the dominant sizes of target tree crowns
         
@@ -71,11 +79,12 @@ def extract_tree_crown(SAT_map, tree_mask, crown_element = 4, meta_data = None,
         print("--filtering")
     # Blur the image with gaussian noise, depending on the crown radius level
     image_gray = rgb2gray(trees)
-    sigma = 0.5 * crown_element
+    sigma = 0.3 * crown_element
     image_filtered = gaussian(image_gray, sigma)
     if plot:
         plt.figure(); plt.imshow(image_filtered, cmap = 'gray')
-        plt.title("Filtered image")
+        # plt.title("Filtered image")
+        plt.axis('off')
         
         
     # 2- Watershed segmentation    
@@ -88,7 +97,8 @@ def extract_tree_crown(SAT_map, tree_mask, crown_element = 4, meta_data = None,
     segments_watershed = watershed(invert(image_filtered), markers = markers, mask = tree_mask[:,:,0])
     if plot:   
         plt.figure(); plt.imshow(mark_boundaries(trees, segments_watershed), cmap = 'gray')
-        plt.title("segments_watershed")
+        # plt.title("segments_watershed")
+        plt.axis('off')
      
     # 3- Export boundaries as shapely.Polygons
     if verbose:
@@ -115,6 +125,17 @@ def extract_tree_crown(SAT_map, tree_mask, crown_element = 4, meta_data = None,
         cols.append(y)
     rows = np.round(np.asarray(rows))
     cols = np.round(np.asarray(cols))
+    
+    if plot: 
+        plt.figure();
+        plt.imshow(invert(image_filtered), cmap = 'gray')
+        plt.axis('off')
+        plt.scatter(cols, rows, s = 20, c = 'red')
+        
+        
+        plt.figure(); plt.imshow(mark_boundaries(trees, segments_watershed), cmap = 'gray')
+        plt.axis('off')
+        plt.scatter(cols, rows, s = 20, c = 'red')
     
     # if there are no crowns (empty dataframe) there are problems. Handle this case
     if len(rows) != 0:
@@ -291,7 +312,7 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
     converted in pixels given the resolution of the image (through the meta_data Affine matrix)
     """
     pixel_to_meter = meta_data['transform'][0]
-    crown_radius_list = [1,2,3] # List of crown template radiuses to look for (in meters) 
+    crown_radius_list = [1,2] # List of crown template radiuses to look for (in meters)  [1,2,3]
     
     # Create a list of radiuses (in pixel) as structuring element in the filtering process
     crown_elements = list(reversed([int(crown_radius / pixel_to_meter) for crown_radius in crown_radius_list]) ) #1,3,5 // 1,2,4
@@ -309,7 +330,9 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
         if verbose:
             print("Merging crown scales {} and {}".format(crown_elements[radius_index-1], crown_elements[radius_index]))
         df_large = integrate_crowns_2scale(df_large, df_small)
+    
         
+    # TODO: Set a maximum number for the crown radius.
     if refinement:
         if df_large is not None:
             if verbose:
@@ -324,6 +347,7 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
             print("crown = None. Saving not possible") 
     return df_large
         
+    
         
 def add_tree_species(df_crowns, tree_species_map_file):
     """Add tree species as an additional field in the df_crowns (pandas DataFrame)"""
@@ -341,19 +365,33 @@ def add_tree_species(df_crowns, tree_species_map_file):
     # it misses some trees. 
     # Therefore, tree crowns without a specie label are assigned a species based on the surrouding species.
     
-    valid_points = df_crowns[df_crowns['tree_species'].isin([1, 2, 3])]
-    invalid_points = df_crowns[df_crowns['tree_species'] == 0]
-
-
-    # Build a KD-tree using the coordinates of the valid points
-    from scipy.spatial import cKDTree
-    valid_tree = cKDTree(valid_points.geometry.centroid.apply(lambda geom: (geom.centroid.x, geom.centroid.y)).tolist())
-
-    # For each invalid point, find the closest valid point using the KD-tree and assign its 'tree_species' value:
-    for idx, invalid_point in invalid_points.iterrows():
-        nearest_idx = valid_tree.query([invalid_point.geometry.centroid.x, invalid_point.geometry.centroid.y], k=1)[1]
-        nearest_valid_point = valid_points.iloc[nearest_idx]
-        df_crowns.at[idx, 'tree_species'] = nearest_valid_point['tree_species']
+    valid_points = df_crowns[df_crowns['tree_species'].isin([1, 2, 3])]    
+    
+    if not len(valid_points.index) == 0:
+        invalid_points = df_crowns[df_crowns['tree_species'] == 0]
+        # Build a KD-tree using the coordinates of the valid points
+        from scipy.spatial import cKDTree
+        valid_tree = cKDTree(valid_points.geometry.centroid.apply(lambda geom: (geom.centroid.x, geom.centroid.y)).tolist())
+    
+        # For each invalid point, find the closest valid point using the KD-tree and assign its 'tree_species' value:
+        for idx, invalid_point in invalid_points.iterrows():
+            nearest_idx = valid_tree.query([invalid_point.geometry.centroid.x, invalid_point.geometry.centroid.y], k=1)[1]
+            nearest_valid_point = valid_points.iloc[nearest_idx]
+            df_crowns.at[idx, 'tree_species'] = nearest_valid_point['tree_species']
+            
+            
+        replacement_mapping = {1: 'spruce', 2: 'pine', 3: 'deciduous'}
+    
+        # Use the replace method to rename values
+        df_crowns['tree_species'] = df_crowns['tree_species'].replace(replacement_mapping)
+        
+    else:
+        # if there are no trees with labels there
+        # Assign tree_specie as "deciduous"
+        # TODO: In future, we can think to just delete those trees
+        # Also, having the model <TreeSpecieClassifier> to detect trees
+        # withjout the external <TreeSegmenter> would solve the problem
+        df_crowns['tree_species'] = "deciduous"
     
     return df_crowns
 
@@ -368,30 +406,264 @@ def add_tree_height(df_crowns, nDSM):
     # Sample the raster at every point location and store values in DataFrame
     df_crowns['tree_height'] = [x[0] for x in src.sample(coords)]
     src.close()
+    
+    # Sanity check: clip the height between 1.4 and 40
+    df_crowns['tree_height'] = df_crowns['tree_height'].clip(lower = 1.4, upper = 40) 
+    return df_crowns
+
+
+    
+  
+    
+  
+def estimate_DBH(df_crowns):
+    """
+    Estimate the tree's diameter at breast height (DBH) using allometric equations for each species.
+    Height should be expressed in meters [m] and the estimated DBH is in meters [cm]. 
+    
+    -------
+    
+    So far, I found a model for spruces developed in Sweden:
+    https://academic.oup.com/forestry/article/95/5/634/6580516#375802885
+    https://www.diva-portal.org/smash/get/diva2:1605781/FULLTEXT01.pdf
+    
+    and another model developed for Norway using the Norwegian national forest inventory data from NIBIO
+    https://www.tandfonline.com/doi/full/10.1080/21580103.2014.957354
+    
+    The two models differ a bit, and it is plausible: allometric equations are not general relations but depends
+    on the geographical area.  Here we use the Norwegian model.
+    """
+    
+    if not 'tree_species' in df_crowns:
+        raise AttributeError("tree species does not exist")
+        
+    def _DBH_to_height(DBH, b1, b2, const):
+        H = ( DBH / (b1 + b2*DBH) )**3 + const 
+        return H
+    
+    def _height_to_DBH(H, b1, b2, const):            
+        # Need to be careful about the asymptote at "(1/b2)**3 + const" in the allometric curve.
+        # Then the estimated DBH will go to infinity. To prevent that, we clip the height to 0.5 meter before the asymptote
+        if H >= (1/b2)**3 + const:
+            H = (1/b2)**3 + const - 0.5
+            
+        k = np.cbrt(H - const)
+        DBH =  (b1 * k) / (1 - b2*k)
+        # DBH = np.clip( (b1 * k) / (1 - b2*k), a_min =  0, a_max = None)                
+        return DBH
+            
+    
+    def _calculate_DBH(row):
+        if row['tree_species'] == "spruce": 
+            DBH = _height_to_DBH(row['tree_height'], b1 = 2.2131 , b2 = 0.3046, const = 1.3)
+        elif row['tree_species'] == "pine": 
+            DBH = _height_to_DBH(row['tree_height'], b1 = 2.2845 , b2 = 0.3318, const = 1.3)
+        elif row['tree_species'] == "deciduous": 
+            DBH = _height_to_DBH(row['tree_height'], b1 = 1.649 , b2 = 0.373, const = 1.3)
+        else:
+            DBH = np.nan
+        return DBH
+
+    
+    df_crowns['DBH'] = df_crowns.apply(_calculate_DBH, axis=1)
+    
     return df_crowns
 
 
 
 
-def calculate_critical_wind_speed_breakage(df_crowns):
+def calculate_Hegyi_index():
+    # TODO in future
+    pass
+
+
+
+def calculate_gap_factor(trees_within_corridor: pandas.DataFrame, crowns: pandas.DataFrame, distance_to_consider = 10):
+    """
+    Calculate the gap coefficient for every tree inside the corridor (passed as input).
+    Because the gap_coeff is calculated in the sourriding area, some trees that may shield the trees inside the corridor 
+    can be outside of the corridor. That's why the crowns dataframe is passed as well.
+    
+    --> There are many ways to implement this gap factor. 
+    - Approach 1: We consider the distance to the closest tree 
+    whose height is at least the height of the tree for which we want to calcualte the gap factor.
+    -Approach 2: We consider just the presence of a tree
+    
+    Parameters
+    ----------
+    trees_within_corridor: geopandas DataFrame for trees inside the corridor
+    crowns: geopandas DataFrame for trees in the large window extracted around the infrastructure line
+    distance_to_consider: deafault = 10. Distance for a tree to be considered neighbor
+    
+    Returns
+    -------
+    geoPandas DataFrame with the gap coefficient for each direction (North, North-East, etc...) as additional fields
+    """
+    
+    def gap_coeff_per_direction(tree: pandas.Series, sector_df : pandas.DataFrame, approach = 2):
+        """ 
+        tree: tree under consideration
+        sector_df: tree inside a circular sector around <tree>
+        """
+        
+        D = distance_matrix(
+            tree[['pointX', 'pointY']].to_numpy(dtype = 'float32').reshape(1,2), 
+            sector_df[['pointX', 'pointY']].to_numpy(dtype = 'float32')).reshape(-1,)
+        
+        # Calculate the distance to the closest tree with height equal or higher than the considered tree
+        large_trees_distance = D[tree['tree_height'] <= sector_df['tree_height']]
+        
+        if approach == 1:
+            #--- APPROACH 1: we consider the distance to the closest tree 
+            # whose height is at least the height of the tree for which we want to calcualte the gap factor        
+            if len(large_trees_distance) != 0:
+                    f_gap = min(large_trees_distance) /2 # divide by 2 to make it in the range (0,5)
+                    f_gap = np.clip(f_gap, a_min = 1, a_max = 5) # ensure the range is between 0 and 5
+            else:
+                f_gap = 5
+                
+        elif approach == 2:                    
+            #--- APPROACH 2: we consider just the presence of a tree in the sector 
+            if len(large_trees_distance) != 0:
+                f_gap = 1
+            else:
+                f_gap = 2
+            
+        return f_gap   
+    
+    
+    def _assign_wind_rose_category(angle):
+        if -22.5 <= angle <= 22.5 or angle >= 337.5 or angle <= -337.5:
+            return "E"
+        elif 22.5 < angle <= 67.5:
+            return "NE"
+        elif 67.5 < angle <= 112.5:
+            return "N"
+        elif 112.5 < angle <= 157.5:
+            return "NW"
+        elif 157.5 < angle <= 202.5:
+            return "W"
+        elif 202.5 < angle <= 247.5:
+            return "SW"
+        elif 247.5 < angle <= 292.5:
+            return "S"
+        elif 292.5 < angle <= 337.5:
+            return "SE"
+        else:
+            return "Undefined"  # Handle angles outside the specified range
+    
+    sectors_labels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    
+    # Iterate through each tree in trees_within_corridor
+    for tree_index, tree in trees_within_corridor.iterrows():
+      
+        # compute the distances from all the other trees
+        distance_tree_crowns = distance_matrix(
+            tree[['pointX', 'pointY']].to_numpy(dtype = 'float32').reshape(1,2), 
+            crowns[['pointX', 'pointY']].to_numpy(dtype = 'float32'))
+        
+        # Select only the trees in the neighborhood within a certain distance from the considered tree
+        tree_neighborhood = crowns[distance_tree_crowns.T < distance_to_consider]
+        
+        # Remove the considered tree from the neighborhood
+        tree_neighborhood = tree_neighborhood.drop(index=tree_index, errors='ignore')
+   
+        # Compute angles
+        angles = (np.rad2deg(np.arctan2(tree_neighborhood['pointY'] - tree['pointY'], tree_neighborhood['pointX'] - tree['pointX'])) + 360)%360  
+        
+        # Cluster angles        
+        wind_rose_categories = angles.apply(_assign_wind_rose_category)
+        
+        # To avoid warning: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+        # pandas.options.mode.chained_assignment = None  # default='warn'
+        tree_neighborhood['Sector'] = wind_rose_categories
+        
+        # Initialize the shielding coefficients for each sector
+        shielding_coefficients = {}
+    
+        # Iterate through sectors and filter the DataFrame for each sector
+        for sector in sectors_labels:
+            sector_df = tree_neighborhood[tree_neighborhood['Sector'] == sector]            
+            # Compute gap factor
+            f_gap = gap_coeff_per_direction(tree, sector_df)
+            shielding_coefficients[sector] = f_gap
+            
+        # Add the shielding coefficients to the trees_within_corridor DataFrame
+        for sector in sectors_labels:
+            column_name = "f_gap_" + str(sector)
+            trees_within_corridor.at[tree_index, column_name] = shielding_coefficients.get(sector, np.nan)
+    return trees_within_corridor
+    
+
+
+def plot_crowns(df_crowns, SAT_image = None, meta_data = None):
+    
+    # Plot only if the number is not too large
+    if len(df_crowns.index) < 3000:
+        
+        if SAT_image is None:
+            # plot just the crowns
+            plt.scatter(df_crowns['pointX'], df_crowns['pointY'])
+        else:
+            # plot crowns on top of the SAT image
+            plt.imshow(geo_utils.multiband_to_RGB(SAT_image))
+            pointX = ((df_crowns['pointX'].to_numpy() - meta_data['transform'][2])/meta_data['transform'][0] ).astype(int)
+            pointY = ((df_crowns['pointY'].to_numpy() - meta_data['transform'][5])/meta_data['transform'][4] ).astype(int)
+            plt.scatter(pointX, pointY, color = 'red')
+    else:
+        print("too many crowns")
+        
+        
+        
+def calculate_critical_wind_speed_breakage(trees_within_corridor: pandas.DataFrame, wind_direction = 'East'):
+     
+    if not 'tree_species' in trees_within_corridor:
+        raise AttributeError("tree species does not exist")
+    if not 'tree_height' in trees_within_corridor:
+        raise AttributeError("tree height does not exist")
+        
+    # Select the correct f_gap_coefficient based on the actual wind direction
+    sector = wind_direction # to be changed accorind to weather data
     
     def _add_MOR(df_crowns):
         """ 
         Assign modulus of rupture (MOR) to different species. MOR are expressed in MPa.
-        Values taken from: https://www.wood-database.com/
+        Values are taken from: https://www.wood-database.com/
         """
-        df_crowns['MOR'] = 0
-        df_crowns.loc[df_crowns['tree_species'] == 1, 'MOR'] = 63
-        df_crowns.loc[df_crowns['tree_species'] == 2, 'MOR'] = 83.3
-        df_crowns.loc[df_crowns['tree_species'] == 3, 'MOR'] = 114.5
-        return df_crowns
+        df_crowns['MOR'] = 0.0
+        df_crowns.loc[df_crowns['tree_species'] == "spruce", 'MOR'] = 63 * 10**6
+        df_crowns.loc[df_crowns['tree_species'] == "pine", 'MOR'] = 83.3 * 10**6
+        df_crowns.loc[df_crowns['tree_species'] == "deciduous", 'MOR'] = 114.5 * 10**6
+        return df_crowns 
     
-    
-    def _estimate_DBH(d_crowns):
+    def _add_Tc(df_crowns_row):
+        """ Calculate the turning coefficient Tc
+        https://www.sciencedirect.com/science/article/pii/S1364815213002090
+        Possible future extension is to calculate Tc including the Hegyi competion index 
         """
-        Estimate the tree's diameter at breast height (DBH) using allometric equations for each species.
-        """
+        cm_to_m = 0.01
+        Tc = 117 * (cm_to_m * df_crowns_row['DBH'])**2 * df_crowns_row['tree_height'] 
+        return Tc
+
+           
+    def _critical_wind_speed_breakage(df_crowns_row):
+        cm_to_m = 0.01
+        f_CW = 1.25 #additional moment provided by the overhanging displaced mass of the canopy 
+        crit_wspeed_breakage = np.sqrt( (df_crowns_row['MOR'] * (cm_to_m * df_crowns_row['DBH'])**3 * np.pi) / (32 * df_crowns_row['Tc'] * df_crowns_row['f_gap_' + sector] * f_CW)  )
+        return crit_wspeed_breakage
+
         
+    # Add modulus of rupture
+    trees_within_corridor = _add_MOR(trees_within_corridor)
+    
+    # Calculate turning coefficient
+    trees_within_corridor['Tc'] = trees_within_corridor.apply(_add_Tc, axis=1)
+    
+    # Calculate critical wind speed for breakage
+    trees_within_corridor['Crit_wspeed_breakage'] = trees_within_corridor.apply(_critical_wind_speed_breakage, axis=1)
+    
+        
+    return trees_within_corridor
         
 
        
