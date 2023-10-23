@@ -1,12 +1,42 @@
 import geopandas
 import numpy as np
-from shapely.geometry import Point
+from shapely.geometry import Point, shape
+import rasterio
+from rasterio.mask import mask
 import pandas
 
 from . import utils
 from . import geo_utils
 from . import tree_utils
 from . import tree_segmentation
+
+from scipy.spatial import distance_matrix
+
+
+def clean_line(infr_line : geopandas.GeoDataFrame):
+    """
+    NVE data has some duplicates. Check for them and remove the duplicates
+    """
+    # Check for duplicates in the lokalID field
+    duplicates_mask = infr_line.duplicated(subset = 'lokalID', keep = 'first')
+    # duplicates = infr_line[infr_line['lokalID'].duplicated()]
+    infr_line = infr_line[~duplicates_mask].reset_index(drop=True)
+    return infr_line
+
+
+def create_corridor(power_line : geopandas.GeoDataFrame, corridor_size = 40):
+    # --The styles of caps are: CAP_STYLE.round (1), CAP_STYLE.flat
+    # (2), and CAP_STYLE.square (3).
+    
+    # The styles of joins between offset segments are:
+    # JOIN_STYLE.round (1), JOIN_STYLE.mitre (2), and
+    # JOIN_STYLE.bevel (3).
+    # corridor = power_line.buffer(distance = large_corridor_side_size, cap_style = 3, join_style = 2, mitre_limit = 10)
+    
+    corridor = power_line.copy()
+    corridor['geometry'] = corridor.buffer(distance = corridor_size, cap_style = 2) 
+    return power_line
+
 
 def interpolate_line(line, distance):
     "Interpolate the road geometry. Road is a geometry.linestring.LineString object"
@@ -45,60 +75,155 @@ def scan_lines(infr_line : geopandas.GeoDataFrame, distance, save_output = False
     return points
             
             
-            
+# DEPRECATED            
 @utils.measure_time            
-def generate_tree_inventory(points_along_line : pandas.DataFrame, SAT_map, meta_data, radius_meters,
-                            tree_mask, tree_species_map = None, nDSM_map = None, mode = "multiscale"):
+def generate_tree_inventory_along_power_lines_old(points_along_line : pandas.DataFrame, SAT_map, meta_data, tree_mask,
+                                              radius_meters = 40, tree_species_map_file = None, nDSM_map_file = None, mode = "multiscale"):
     
-    METERS_to_PIXEL_ratio = meta_data['transform'][0]
-    radius = int(radius_meters / METERS_to_PIXEL_ratio) # pixel
-    
-    print("\n-- Generating tree inventory ")
-    crowns = []
-    for index in range(0, len(points_along_line)):
-        
-        # print("Extracting point {} of {}".format(index, len(points_along_line)))
+    tree_inventory = [] 
+    # for index in [0]:
+    for index, point in points_along_line.items():
+        # for each point along the power line  
         point = (points_along_line.iloc[index].x, points_along_line.iloc[index].y)
         
-        if geo_utils.is_point_valid(point, meta_data, radius):
-            # Extract window from satellite image
-            W, meta_data_W = geo_utils.extract_window(point, SAT_map, radius, meta_data)
+        print(str(index) + "/" + str(len(points_along_line)))
+        METERS_to_PIXEL_ratio = meta_data['transform'][0]
+        radius = int(radius_meters / METERS_to_PIXEL_ratio) # pixel
+        
+        W, meta_data_W = geo_utils.extract_window(point, SAT_map, radius, meta_data)
+        tree_mask_W, _ = geo_utils.extract_window(point, tree_mask, radius, meta_data)
+        
+        if W is not None:
+            # Extract crowns in the large window W
+            crowns = tree_utils.extract_tree_crown_multi_scale(geo_utils.multiband_to_RGB(W), 
+                                                                    tree_mask_W, 
+                                                                    meta_data_W, 
+                                                                    verbose = False, 
+                                                                    save_output = False,
+                                                                    refinement = True)
             
-            # Extract window from tree_mask.  
-            # The tree_mask is pre-generated using the <TreeSegmenter> for computational reasons and provide here as input to the function,
-            # instead of being generated inside this loop for every patch.
-            # It is still possible to do that but is less efficient.
-            tree_mask_W, _ = geo_utils.extract_window(point, tree_mask, radius, meta_data)
             
-            # append the crowns extracted at point 'index' into the DataFrame
-            if mode == "multiscale":
-                crowns.append(tree_utils.extract_tree_crown_multi_scale(geo_utils.multiband_to_RGB(W), 
-                                                                        tree_mask_W, 
-                                                                        meta_data_W, 
-                                                                        verbose = False, 
-                                                                        save_output = False,
-                                                                        refinement = True,
-                                                                        output_filename = "crowns" + str(index) + ".gpkg"))
-            else:
-                crowns.append(tree_utils.extract_tree_crown(SAT_map = geo_utils.multiband_to_RGB(W), 
-                                                                        tree_mask = tree_mask_W, 
-                                                                        meta_data = meta_data_W,
-                                                                        crown_radius = 4,
-                                                                        verbose = False, 
-                                                                        save_output = False, 
-                                                                        output_filename = "crowns" + str(index) + ".gpkg"))
+            # ges.tree_utils.plot_crowns(crowns, W, meta_data_W)
+            if crowns is not None:
+                if not len(crowns.index) == 0:                
                     
-    crowns = pandas.concat(crowns, copy = False)
-    crowns = tree_utils.refine_crowns(crowns, meta_data)
-    return crowns
-    # crowns.to_file("crowns.gpkg", driver="GPKG") 
-    
+                    # Add tree species
+                    crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
+                    
+                    # Add tree height
+                    crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
+                    
+                    # Extract trees within the corridor
+                    distances = distance_matrix(crowns[['pointX', 'pointY']], [point])
+                    corridor_side_size = 20
+                    trees_within_corridor = crowns[distances < corridor_side_size]
+                    
+                    if not len(trees_within_corridor.index) == 0:
+                        
+                        # Estimate CBH from height
+                        trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
+                        
+                        # Finally, calculate the critical wind speed for the trees inside the corridor                       
+                        trees_within_corridor = tree_utils.calculate_gap_factor(trees_within_corridor, crowns)
+                        # trees_within_corridor = ges.tree_utils.calculate_critical_wind_speed_breakage(trees_within_corridor, 
+                        #                                                                               wind_direction = 'E')
+                        
+                        tree_inventory.append(trees_within_corridor)
+                                
+                # merged_df = pandas.concat([trees_within_corridor, crowns], axis=0, join='outer')
+        
+    tree_inventory = pandas.concat(tree_inventory, copy = False, ignore_index=True)
     
  
-            
-            
-            
-            
+    
+@utils.measure_time          
+def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, satellite_map_file, tree_mask_file,
+                                              large_corridor_side_size = 40,
+                                              small_corridor_side_size = 20,
+                                              tree_species_map_file = None, nDSM_map_file = None, mode = "multiscale"):
+
+    tree_inventory = [] 
+    
+    # Make corridor (dilation)    
+    corridor = power_line.buffer(distance = 40, cap_style = 2) 
+    
+    # Open the needed geoTiFF files
+    satellite_src = rasterio.open(satellite_map_file)
+    satellite_meta_data = satellite_src.profile
+    tree_mask_src = rasterio.open(tree_mask_file)
+    
+    # Copy the metadata from the source raster
+    meta_data_corridor = satellite_meta_data.copy()
+    
+    for index in range(0,10):
+    # for index, power_line_segment in corridor.items():
+        print(index)
+        
+        # Clip the satellite image to the corridor       
+        SAT_clipped, affine_transform_corridor = mask(satellite_src, [shape(corridor.geometry.values[index])], crop=True)
+        SAT_clipped = utils.convert_to_channel_last(SAT_clipped, verbose = False)
+        
+        # Update metadata with the new dimensions, transform, and CRS
+        meta_data_corridor.update({'height': SAT_clipped.shape[0], 
+                              'width': SAT_clipped.shape[1], 
+                              'transform': affine_transform_corridor, 
+                              'dtype': SAT_clipped.dtype})
+
+        # Extract the tree mask 
+        tree_mask_clipped, _ = mask(tree_mask_src, [shape(corridor.geometry.values[index])], crop=True)
+        tree_mask_clipped = utils.convert_to_channel_last(tree_mask_clipped, verbose = False)
+        
+        # Extract crowns from the satellite along power line
+        crowns = tree_utils.extract_tree_crown_multi_scale(geo_utils.multiband_to_RGB(SAT_clipped), 
+                                                                tree_mask_clipped, 
+                                                                meta_data_corridor, 
+                                                                verbose = False, 
+                                                                save_output = False,
+                                                                refinement = True)
+        
+        if crowns is not None:
+            if not len(crowns.index) == 0: 
+                # ges.tree_utils.plot_crowns(crowns, SAT_clipped, meta_data_corridor)
+                
+                # Add a field to write the power line segment                 
+                crowns['power_line_segment'] = index 
+                # Add tree species
+                crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
+                
+                # Add tree height
+                crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
+                
+                # Calculate distance from the power line
+                crowns['dst_to_line'] = crowns['geometry'].apply(lambda point: point.centroid.distance(power_line.geometry.iloc[index]))
+                
+                # Extract trees within the corridor
+                # crowns['within'] = (crowns['dst_to_line'] < small_corridor_side_size).astype(int)                
+                
+                # Estimate CBH from height for the trees inside the corridor
+                trees_within_corridor = crowns[crowns['dst_to_line'] < small_corridor_side_size]
+                trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
+                    
+                # Finally, calculate the critical wind speed for the trees inside the corridor 
+                trees_within_corridor = tree_utils.calculate_gap_factor(trees_within_corridor, crowns)
+                
+                crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
+                
+#                     # trees_within_corridor = ges.tree_utils.calculate_critical_wind_speed_breakage(trees_within_corridor, 
+#                     #                                                                               wind_direction = 'E')
+                    
+                tree_inventory.append(crowns)
+                        
+    tree_inventory = pandas.concat(tree_inventory, copy = False, ignore_index=True)
+        
+        
+
+    
+    
+    # Close the geoTiFF files
+    satellite_src.close() 
+    tree_mask_src.close()           
+    
+    return tree_inventory
             
             
             
