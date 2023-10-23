@@ -56,7 +56,8 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             
             if architecture == "unet":                                                                
                 model = architectures.unet(input_shape = input_shape, n_classes = 1)
-            
+            elif architecture == "unet_attention":
+                model = architectures.UNet_Attention(input_shape = input_shape, n_classes = 1)
             else:
                 raise NotImplementedError()
            
@@ -157,7 +158,7 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             N_tiles_cols = subdivisions * image.shape[1] / window_size
             # 4 is the factor from uint8 to float32 reppresentation, 1024**3 is the byte->GB conversion
             ESTIMATED_MEMORY = (N_tiles_rows * N_tiles_cols * window_size**2 * image.shape[2] * 4 * nb_classes)/(1024**3)
-            print("Estiamted memory {} GB \n". format(ESTIMATED_MEMORY))
+            print("Estimated memory {} GB \n". format(ESTIMATED_MEMORY))
             
             # if the data require less than 5 GB, then fit it all
             if ESTIMATED_MEMORY < 5:
@@ -218,6 +219,10 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             history = pickle.load(input_file)
             
         plt.figure(figsize=(10,5))
+        
+        plt.plot(history['loss'], label = "loss (training)")
+        plt.plot(history['val_loss'], label = "loss (validation)")
+        
         plt.plot(history['binary_accuracy'], label = "binary_accuracy (training)")
         plt.plot(history['val_binary_accuracy'], label = "binary_accuracy (validation)")
         
@@ -226,193 +231,12 @@ class TreeSegmenter(RSClassifier.RSClassifier):
         
         plt.xlabel("Epochs")
         # plt.ylabel("Metric")
-        plt.legend(loc = "lower right", prop={'size': 20})
+        plt.legend(loc = "best", prop={'size': 15})
         plt.ylim(0,1)
         plt.tight_layout()
 
 
-
-
-
-
-class TreeSegmenter_old(RSClassifier.RSClassifier):
-    
-    def __init__(self, name = "TreeSegmenter", config = dict()):
-        super().__init__(name, config)
-        
-        # New attributes
-
-
-
-    # Processing functions
-    def build_model(self, input_shape, architecture):
-
-        if os.path.isfile(self.config['working_dir'] + self.config['DLmodel_name'] +'.h5'): 
-            print("--Model already exist. Call <load_model> class method")
-        else:  
-            
-            if architecture == "unet":                                                                
-                model = architectures.unet(input_shape=input_shape)
-            
-            else:
-                raise NotImplementedError()
            
-            opt = tf.keras.optimizers.Adam(learning_rate=0.001) #optimizer: 0.0001
-            
-            model.compile(
-                # loss = 'binary_crossentropy', 
-                loss = tf.keras.losses.BinaryCrossentropy(),
-                optimizer = opt, 
-                # metrics=['accuracy', tf.keras.metrics.MeanIoU(num_classes=2)])
-                metrics = [tf.keras.metrics.BinaryAccuracy(threshold=0.5), 
-                           tf.keras.metrics.BinaryIoU(target_class_ids=[1], threshold=0.5)])
-            print("Model initialized\n")
-            model.summary()
-            self.DLmodel = model
-        
-   
-         
-    def load_model(self):
-        if os.path.isfile(self.config['working_dir'] + self.config['DLmodel_name'] +'.h5'):
-            self.DLmodel = tf.keras.models.load_model(self.config['working_dir'] + self.config['DLmodel_name'] +'.h5', compile=False)
-            print("--Model loaded")
-        else:
-            print("--Model does not exist")
-    
- 
-    def _pre_process_dataset(X, y):
-        X = (X/255).astype('float32')
-        y = (y/255).astype('uint8')
-        return X, y
-    
-    def train_model(self, X, y):
-        
-        if self.DLmodel is not None and utils.confirmCommand("Start training?"):
-            print("--Training the model to segment trees")
-            
-            self.patch_radius = X.shape[1]
-            X, y = self._pre_process_dataset(X, y)
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-            
-            def scheduler(epoch, lr):
-                if epoch < 20:
-                    return lr
-                else:
-                    return lr * tf.math.exp(-0.1)
-
-            my_callbacks = [
-                tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience = 40), #15
-                # tf.keras.callbacks.LearningRateScheduler(scheduler, verbose = 1),
-                tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=0.00001, verbose = 1)
-                ] 
-            
-            #Train model:
-            history = self.DLmodel.fit(X_train, y_train, 
-                          epochs=200, 
-                          batch_size = 128,
-                          validation_data=(X_test, y_test),
-                          callbacks=my_callbacks)
-            
-            # Export model and training history
-            if not os.path.isfile(self.config['working_dir'] + self.config['DLmodel_name'] +'.h5'): 
-                self.DLmodel.save(self.config['working_dir'] + self.config['DLmodel_name'] +'.h5')
-            with open(self.config['working_dir'] + self.config['DLmodel_name'] + "_history", 'wb') as file:
-                pickle.dump(history.history, file)
-            
-            print("X_map and y_map set to None again")
-            self.X_map = None
-            self.y_map = None
-        else:
-            print("Model not initialized. Call <build_model> class method.")
-    
-    # Free up RAM in case the model definition cells were run multiple times
-    # tf.keras.backend.clear_session()
- 
-    
-
-    
-    def plot_training_history(self, ):
-        
-        with open(self.config['working_dir'] + self.config['DLmodel_name'] + "_history", "rb") as input_file:
-            history = pickle.load(input_file)
-            
-        plt.figure(figsize=(10,5))
-        plt.plot(history['binary_accuracy'], label = "binary_accuracy (training)")
-        plt.plot(history['val_binary_accuracy'], label = "binary_accuracy (validation)")
-        
-        plt.plot(history['binary_io_u_3'], label = "IoU (training)")
-        plt.plot(history['val_binary_io_u_3'], label = "IoU (validation)")
-        
-        plt.xlabel("Epochs")
-        # plt.ylabel("Metric")
-        plt.legend(loc = "lower right", prop={'size': 20})
-        plt.ylim(0.4,1)
-        plt.tight_layout()
-    
-    
-    
-    def generate_tree_map(self, image):
-        if self.DLmodel is not None:
-            # How much memory would the tiles consume roughly? in GB
-            window_size = 80
-            subdivisions = 2
-            N_tiles_rows = subdivisions * image.shape[0] / window_size
-            N_tiles_cols = subdivisions * image.shape[1] / window_size
-            # 4 is the factor from uint8 to float32 reppresentation, 1024**3 is the byte->GB conversion
-            ESTIMATED_MEMORY = (N_tiles_rows * N_tiles_cols * window_size**2 * image.shape[2] * 4)/(1024**3)
-            
-            # if the data require less than 5 GB, then fit it all
-            if ESTIMATED_MEMORY < 5:
-                # tree mask can be computed a straight way
-                stiched_pred_map = self._generate_tree_map(image,  window_size, subdivisions)
-            else:
-                
-                if utils.confirmCommand("Image too large, split it?"):
-                    # otherwise if the input image is too big, need to split it
-                    # how many chunk? Each chunk is ~3GB, then we need N chunks
-                    N = int(np.ceil(ESTIMATED_MEMORY / 3))
-                    print("Satellite image is split into {} parts".format(N))
-                    # Divide the image into N parts: each is saved temporarly (tmp folder is created). 
-                    tmp_folder = "tmp"
-                    geo_utils.split_raster_to_parts(image, N, tmp_folder)
-                    
-                    stiched_pred_map = []
-                    # For each chunk
-                    for i in range(0, N):
-                        # Load the chunk
-                        print("Load part: " + str(i))
-                        part = np.load(tmp_folder + "/part" + str(i) + ".npy")
-                        # Segment it
-                        print("Segment part: " + str(i))
-                        stiched_pred_map.append(self._generate_tree_map(part, window_size, subdivisions))
-                        # Save the mask
-                        print("Save predicted: " + str(i))
-                        
-                    # When all mask are created, merge them back together
-                    stiched_pred_map = np.vstack(stiched_pred_map)
-                    stiched_pred_map = (stiched_pred_map*255).astype('uint8')
-                    
-                    # Delete the input image
-                    # TODO
-                else:
-                    stiched_pred_map = None
-                                  
-            return stiched_pred_map
-        
-        else:
-            print("--Model not loaded")
-             
-            
-    def _generate_tree_map(self, image, window_size, subdivisions):                    
-            image = (image / 255).astype('float32')
-            print("Segmenting trees with tiles smoothing function")
-
-            stiched_pred_map = stitching.predict_img_with_smooth_windowing(image, window_size, subdivisions, nb_classes=1, 
-                                          pred_func = self.DLmodel.predict)
-                
-            stiched_pred_map = (stiched_pred_map*255).astype('uint8')
-            return stiched_pred_map
-            
                     
         
 def binarize_treeMap(map_pred, thresholds):
