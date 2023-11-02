@@ -16,6 +16,8 @@ from scipy.spatial import distance_matrix
 import rasterio
 
 from . import geo_utils
+from . import utils
+
 
 # To avoid warning: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
 pandas.options.mode.chained_assignment = None  # default='warn'
@@ -262,7 +264,7 @@ def integrate_crowns_2scale(df_large, df_small, overlapping_threshold = 0.8, con
         if save_output:
             df_small.to_file("_data/NTM dataset/crown_shapes/tmp.gpkg", driver="GPKG") 
     else:
-        print("Crowns no detected. Integration not possible")
+        print("No crowns detected")
     return df_small          
         
         
@@ -477,8 +479,8 @@ def calculate_Hegyi_index():
     pass
 
 
-
-def calculate_gap_factor(trees_within_corridor: pandas.DataFrame, crowns: pandas.DataFrame, distance_to_consider = 10):
+@utils.measure_time  
+def calculate_shield_factor(trees_within_corridor: pandas.DataFrame, crowns: pandas.DataFrame, distance_to_consider = 10):
     """
     Calculate the gap coefficient for every tree inside the corridor (passed as input).
     Because the gap_coeff is calculated in the sourriding area, some trees that may shield the trees inside the corridor 
@@ -500,7 +502,8 @@ def calculate_gap_factor(trees_within_corridor: pandas.DataFrame, crowns: pandas
     geoPandas DataFrame with the gap coefficient for each direction (North, North-East, etc...) as additional fields
     """
     
-    def gap_coeff_per_direction(tree: pandas.Series, sector_df : pandas.DataFrame, approach = 2):
+    # DEPRECATED
+    def _gap_coeff_per_direction(tree: pandas.Series, sector_df : pandas.DataFrame, approach = 2):
         """ 
         tree: tree under consideration
         sector_df: tree inside a circular sector around <tree>
@@ -531,67 +534,75 @@ def calculate_gap_factor(trees_within_corridor: pandas.DataFrame, crowns: pandas
             
         return f_gap   
     
-    
-    def _assign_wind_rose_category(angle):
-        if -22.5 <= angle <= 22.5 or angle >= 337.5 or angle <= -337.5:
-            return "E"
-        elif 22.5 < angle <= 67.5:
-            return "NE"
-        elif 67.5 < angle <= 112.5:
-            return "N"
-        elif 112.5 < angle <= 157.5:
-            return "NW"
-        elif 157.5 < angle <= 202.5:
-            return "W"
-        elif 202.5 < angle <= 247.5:
-            return "SW"
-        elif 247.5 < angle <= 292.5:
-            return "S"
-        elif 292.5 < angle <= 337.5:
-            return "SE"
+    # DEPRECATED
+    def _gap_coeff_per_direction(tree, sector_df, approach=2):
+        D = distance_matrix(
+            tree[['pointX', 'pointY']].values.reshape(1, 2),
+            sector_df[['pointX', 'pointY']].values
+        ).ravel()
+
+        large_trees_distance = D[tree['tree_height'] <= sector_df['tree_height']]
+
+        if approach == 1:
+            f_gap = np.clip(np.nanmin(large_trees_distance) / 2, 1, 5) if len(large_trees_distance) > 0 else 5
         else:
-            return "Undefined"  # Handle angles outside the specified range
+            f_gap = 1 if len(large_trees_distance) > 0 else 2
+
+        return f_gap
+    
+    
+    def shield_coefficient_per_sector(sector_df, distance_to_consider):
+        # 0 if there are not trees in that direction, 1 otherwise
+        # return 0.5 if sector_df.empty else 1
+        return 0.2 if len(sector_df.index) < 2 else 1
+
+        
+        # def f(x):
+        #     return 0.5 + 0.5*x
+        
+        # if sector_df.empty:
+        #     return 0.5
+    
+        # AREA_sector = distance_to_consider**2 * np.sin(0.392)  # Area circular sector formula. Each sector is 22.5 deg (0.392 rad)        
+        # AREA_trees = (np.pi * sector_df['crown_radius']**2).sum()
+        # shield_coeff = f(AREA_trees / AREA_sector)
+        # return shield_coeff
+    
+    
+    def assign_wind_rose_category(angle):
+        categories = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+        return categories[int(((angle + 22.5) % 360) // 45)]
+
+
     
     sectors_labels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    shielding_coefficients = {sector: [] for sector in sectors_labels} 
     
-    # Iterate through each tree in trees_within_corridor
     for tree_index, tree in trees_within_corridor.iterrows():
-      
+        x, y = tree['pointX'], tree['pointY']
+        
         # compute the distances from all the other trees
-        distance_tree_crowns = distance_matrix(
-            tree[['pointX', 'pointY']].to_numpy(dtype = 'float32').reshape(1,2), 
-            crowns[['pointX', 'pointY']].to_numpy(dtype = 'float32'))
+        distance_tree_crowns = np.sqrt((crowns['pointX'] - x) ** 2 + (crowns['pointY'] - y) ** 2)
         
         # Select only the trees in the neighborhood within a certain distance from the considered tree
-        tree_neighborhood = crowns[distance_tree_crowns.T < distance_to_consider]
+        tree_neighborhood = crowns[distance_tree_crowns < distance_to_consider]
         
         # Remove the considered tree from the neighborhood
         tree_neighborhood = tree_neighborhood.drop(index=tree_index, errors='ignore')
-   
+        
         # Compute angles
-        angles = (np.rad2deg(np.arctan2(tree_neighborhood['pointY'] - tree['pointY'], tree_neighborhood['pointX'] - tree['pointX'])) + 360)%360  
+        tree_neighborhood['angle'] = np.rad2deg(np.arctan2(tree_neighborhood['pointY'] - y, tree_neighborhood['pointX'] - x))
         
-        # Cluster angles        
-        wind_rose_categories = angles.apply(_assign_wind_rose_category)
-        
-        # To avoid warning: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
-        # pandas.options.mode.chained_assignment = None  # default='warn'
-        tree_neighborhood['Sector'] = wind_rose_categories
-        
-        # Initialize the shielding coefficients for each sector
-        shielding_coefficients = {}
-    
-        # Iterate through sectors and filter the DataFrame for each sector
+        # Assign sector
+        tree_neighborhood['Sector'] = tree_neighborhood['angle'].apply(assign_wind_rose_category)
         for sector in sectors_labels:
-            sector_df = tree_neighborhood[tree_neighborhood['Sector'] == sector]            
-            # Compute gap factor
-            f_gap = gap_coeff_per_direction(tree, sector_df)
-            shielding_coefficients[sector] = f_gap
-            
-        # Add the shielding coefficients to the trees_within_corridor DataFrame
-        for sector in sectors_labels:
-            column_name = "f_gap_" + str(sector)
-            trees_within_corridor.at[tree_index, column_name] = shielding_coefficients.get(sector, np.nan)
+                sector_df = tree_neighborhood[tree_neighborhood['Sector'] == sector]
+                shielding_coefficients[sector].append(shield_coefficient_per_sector(sector_df, distance_to_consider))
+                
+    # Create columns for shielding coefficients
+    for sector in sectors_labels:
+        trees_within_corridor[f'f_shield_{sector}'] = shielding_coefficients[sector]
+
     return trees_within_corridor
     
 
@@ -615,15 +626,12 @@ def plot_crowns(df_crowns, SAT_image = None, meta_data = None):
         
         
         
-def calculate_critical_wind_speed_breakage(trees_within_corridor: pandas.DataFrame, wind_direction = 'East'):
+def calculate_critical_wind_speed_breakage(tree_inventory: pandas.DataFrame, wind_direction = 'E'):
      
-    if not 'tree_species' in trees_within_corridor:
+    if not 'tree_species' in tree_inventory:
         raise AttributeError("tree species does not exist")
-    if not 'tree_height' in trees_within_corridor:
+    if not 'tree_height' in tree_inventory:
         raise AttributeError("tree height does not exist")
-        
-    # Select the correct f_gap_coefficient based on the actual wind direction
-    sector = wind_direction # to be changed accorind to weather data
     
     def _add_MOR(df_crowns):
         """ 
@@ -644,26 +652,48 @@ def calculate_critical_wind_speed_breakage(trees_within_corridor: pandas.DataFra
         cm_to_m = 0.01
         Tc = 117 * (cm_to_m * df_crowns_row['DBH'])**2 * df_crowns_row['tree_height'] 
         return Tc
-
            
     def _critical_wind_speed_breakage(df_crowns_row):
         cm_to_m = 0.01
         f_CW = 1.25 #additional moment provided by the overhanging displaced mass of the canopy 
-        crit_wspeed_breakage = np.sqrt( (df_crowns_row['MOR'] * (cm_to_m * df_crowns_row['DBH'])**3 * np.pi) / (32 * df_crowns_row['Tc'] * df_crowns_row['f_gap_' + sector] * f_CW)  )
+        
+        def _opposite_wind_direction(wind_direction):
+            opposite_directions = {
+                "N": "S",
+                "NE": "SW",
+                "E": "W",
+                "SE": "NW",
+                "S": "N",
+                "SW": "NE",
+                "W": "E",
+                "NW": "SE"
+            }
+            return opposite_directions.get(wind_direction, None)
+                
+        
+        # Calculate the opposite sector    
+        opposite_wind_direction = _opposite_wind_direction(wind_direction)
+        # Shiled is the combination of the shielding effect of trees ahead of back of the wind direction
+        shield = 0.5*(df_crowns_row['f_shield_' + wind_direction] + df_crowns_row['f_shield_' + opposite_wind_direction])
+        crit_wspeed_breakage = np.sqrt( (df_crowns_row['MOR'] * (cm_to_m * df_crowns_row['DBH'])**3 * shield * np.pi) / (32 * df_crowns_row['Tc'] * f_CW)  )
         return crit_wspeed_breakage
 
         
     # Add modulus of rupture
-    trees_within_corridor = _add_MOR(trees_within_corridor)
+    tree_inventory = _add_MOR(tree_inventory)
     
     # Calculate turning coefficient
-    trees_within_corridor['Tc'] = trees_within_corridor.apply(_add_Tc, axis=1)
+    tree_inventory['Tc'] = tree_inventory.apply(_add_Tc, axis=1)
     
     # Calculate critical wind speed for breakage
-    trees_within_corridor['Crit_wspeed_breakage'] = trees_within_corridor.apply(_critical_wind_speed_breakage, axis=1)
+    tree_inventory['Crit_wspeed_breakage'] = tree_inventory.apply(_critical_wind_speed_breakage, axis=1)
     
+    # Trees outside of the corridor do no thave a calculated critical wind speed because "out of range".
+    # However, we still assign a critical speed as 100 to be able to visialize in QGIS
+    # Replace NaN values in the 'Crit_wspeed_breakage' column with 100
+    tree_inventory['Crit_wspeed_breakage'].fillna(100, inplace=True)
         
-    return trees_within_corridor
+    return tree_inventory
         
 
        
