@@ -94,11 +94,11 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 [Code]
 
 
-## Risk calculation
+## Risk map generation
 
 <img src="images/readme/crowns_example.png" width="600">
 
-[Code - TODO] 
+[Code](/main.ipynb) 
 
 
 # Licensing 
