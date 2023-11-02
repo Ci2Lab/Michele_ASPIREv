@@ -162,24 +162,10 @@ class RSClassifier():
    
     # %% Processing functions
     
-    def align_X_y(self):
-        """Height/width between X_map and y_map might be off by one pixel due to some clipping.
-        This will perform a small alignment"""
-        if (self.X_map is None) or (self.y_map is None):
-            print("X_map or y_map not loaded")
-        else:
-            if self.X_map.shape == self.y_map.shape:
-                print("X_map and y_map have the same dimensions")
-            else:
-                print("X_map shape {} \ny_map shape {}".format(self.X_map.shape, self.y_map.shape))
-                print('--Resizing to same shape')
-                h, w, _ = [min(s) for s in zip(self.X_map.shape,  self.y_map.shape)]
-                self.X_map = self.X_map[:h,:w,:]
-                self.y_map = self.y_map[:h,:w,:]
-                print("SAT shape {} \ny_map shape {}".format(self.X_map.shape, self.y_map.shape))
+    def align_X_y(self):        
+        self.X_map, self.y_map = geo_utils.align_maps(self.X_map, self.y_map)
     
-    
-    
+       
     #@f.measure_time
     def create_dataset(self,  patch_number = 10, patch_radius = 40, save_patch = False, export_patch_locations = False):
           
