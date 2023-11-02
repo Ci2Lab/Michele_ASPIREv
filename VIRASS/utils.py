@@ -52,16 +52,15 @@ def convert_to_channel_last(SAT_image : np.array, verbose = True):
     """
     assert len(SAT_image.shape) == 3
     if is_channel_first(SAT_image):
+        old_shape = SAT_image.shape
+        SAT_image = np.transpose(SAT_image, (1,2,0))
+        new_shape = SAT_image.shape
         if verbose:
             print("Converting to channel_last:")
-            print(str(SAT_image.shape))
-        SAT_image = np.transpose(SAT_image, (1,2,0))
-        if verbose:
-            print("--> " + str(SAT_image.shape))
+            print(str(old_shape) + "-->" + str(new_shape))
     else:
         if verbose:
-            print("image is already channel_last")
-            print("--> " + str(SAT_image.shape))
+            print("image is already channel_last" + str(old_shape))
     return SAT_image
         
  
@@ -71,16 +70,16 @@ def convert_to_channel_first(SAT_image : np.array, verbose = True):
     """
     assert len(SAT_image.shape) == 3
     if is_channel_last(SAT_image):
+        old_shape = SAT_image.shape
+        SAT_image = np.transpose(SAT_image, (2,0,1))
+        new_shape = SAT_image.shape
         if verbose:
             print("Converting to first:")
-            print(str(SAT_image.shape))
-        SAT_image = np.transpose(SAT_image, (2,0,1))
-        if verbose:
-            print("--> " + str(SAT_image.shape))
+            print(str(old_shape) + "-->" + str(new_shape))
+        
     else:
         if verbose:
-            print("image is already channel_first")
-            print("--> " + str(SAT_image.shape))
+            print("image is already channel_first" + str(old_shape))
     return SAT_image
             
    
