@@ -80,7 +80,7 @@ def export_GEOtiff(filename: str, SAT_image: np.array, meta_data: dict):
             
             
             
-def load_infrastructure_line(filename: str):
+def load_infrastructure_line(filename: str, crs = 32632):
     #if file does not exist
     if not os.path.isfile(filename):
         relocate = utils.confirmCommand("File: <"+ filename + "> does not exist. \n Do you want to locate it in other directories?")
@@ -94,7 +94,8 @@ def load_infrastructure_line(filename: str):
         print("Infrastructure file not loaded")
         return None
     else:
-        return geopandas.read_file(filename)
+        # Load and convert to a suitable CRS
+        return geopandas.read_file(filename).to_crs("epsg:" + str(crs))
             
             
             
