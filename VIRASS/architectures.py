@@ -12,7 +12,7 @@ from keras.regularizers import l2
 
 
 
-def UNet_Attention(input_shape, n_filters = 16, n_classes = 1, task = "segmentation"):
+def UNet_Attention(input_shape, n_filters = 16, n_classes = 1, dropout = False, task = "segmentation"):
     
     def conv_block(inputs, filters, kernel_size = 3, activation = 'elu'):
         x = Conv2D(filters, kernel_size, padding='same')(inputs)
@@ -21,12 +21,13 @@ def UNet_Attention(input_shape, n_filters = 16, n_classes = 1, task = "segmentat
         x = Conv2D(filters, kernel_size, padding='same')(x)
         x = BatchNormalization()(x)
         x = Activation(activation)(x)
+        if dropout:
+            x = Dropout(0.1)(x)
         return x    
     
     def attention_block(gating, x, inter_channel):
         """  
-        Attention mechanism.
-        Modified version of code from https://github.com/MoleImg/Attention_UNet/blob/master/AttResUNet.py                  
+        Attention mechanism.                 
         # Useful resources:
         # https://github.com/nabsabraham/focal-tversky-unet/blob/master/newmodels.py
         # https://medium.com/aiguys/attention-u-net-resunet-many-more-65709b90ac8b
