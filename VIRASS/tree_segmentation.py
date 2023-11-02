@@ -30,6 +30,7 @@ import pickle
 from sklearn.model_selection import train_test_split
 import numpy as np
 from skimage import morphology 
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve, auc, jaccard_score
 
 
 
@@ -57,7 +58,8 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             if architecture == "unet":                                                                
                 model = architectures.unet(input_shape = input_shape, n_classes = 1)
             elif architecture == "unet_attention":
-                model = architectures.UNet_Attention(input_shape = input_shape, n_classes = 1)
+                dropout = self.config['config_training']['dropout']
+                model = architectures.UNet_Attention(input_shape = input_shape, n_classes = 1,  dropout = dropout)
             else:
                 raise NotImplementedError()
            
@@ -217,22 +219,34 @@ class TreeSegmenter(RSClassifier.RSClassifier):
         
         with open(self.working_dir + self.config['config_training']['model_name'] + "_history", "rb") as input_file:
             history = pickle.load(input_file)
-            
-        plt.figure(figsize=(10,5))
         
-        plt.plot(history['loss'], label = "loss (training)")
-        plt.plot(history['val_loss'], label = "loss (validation)")
+        fig, ax1 = plt.subplots(figsize=(10, 5))
         
-        plt.plot(history['binary_accuracy'], label = "binary_accuracy (training)")
-        plt.plot(history['val_binary_accuracy'], label = "binary_accuracy (validation)")
+        ax1.plot(history['loss'], label = "loss (training)")
+        ax1.plot(history['val_loss'], label = "loss (validation)")
         
-        plt.plot(history['binary_io_u'], label = "IoU (training)")
-        plt.plot(history['val_binary_io_u'], label = "IoU (validation)")
+        ax1.plot(history['binary_accuracy'], label = "binary_accuracy (training)")
+        ax1.plot(history['val_binary_accuracy'], label = "binary_accuracy (validation)")
         
-        plt.xlabel("Epochs")
-        # plt.ylabel("Metric")
-        plt.legend(loc = "best", prop={'size': 15})
-        plt.ylim(0,1)
+        ax1.plot(history['binary_io_u'], label = "IoU (training)")
+        ax1.plot(history['val_binary_io_u'], label = "IoU (validation)")
+        
+        ax1.set_ylim(0, 1)
+        ax1.set_yticks(np.arange(0, 1.1, 0.1))
+        ax1.set_xlabel('Epochs')
+        ax1.set_ylabel('Metrics')
+        
+        ax2 = ax1.twinx()
+        ax2.set_yscale('log')
+        ax2.plot(history['lr'], label = "learning rate", color='purple', linestyle='--')
+        ax2.tick_params(axis='y', labelcolor='purple')
+        # ax2.set_ylabel('Learning rate')
+        
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines = lines1 + lines2
+        labels = labels1 + labels2
+        plt.legend(lines, labels, loc = 'best')
         plt.tight_layout()
 
 
@@ -274,7 +288,40 @@ def refine_tree_mask(tree_mask, meta_data = None):
 
 
 
+def compute_performance(GT, pred):
+    
+    
+    GT, pred = geo_utils.align_maps(GT, pred)
+    
+    ground_truth_flat = GT.ravel()/255
+    prediction_flat = pred.ravel()
 
+    # --Calculate evaluation metrics
+    accuracy = accuracy_score(ground_truth_flat, prediction_flat)
+    print("\nAccuracy: {:.2f}".format(accuracy))
+    
+    precision = precision_score(ground_truth_flat, prediction_flat)
+    print("Precision: {:.2f}".format(precision))
+    
+    recall = recall_score(ground_truth_flat, prediction_flat)
+    print("Recall: {:.2f}".format(recall))
+    
+    f1 = f1_score(ground_truth_flat, prediction_flat)
+    print("F1-Score: {:.2f}".format(f1))
+    
+    roc_auc = roc_auc_score(ground_truth_flat, prediction_flat)
+    print("ROC AUC: {:.2f}".format(roc_auc))
+
+    # Jaccard Index (IoU)
+    jaccard_index = jaccard_score(ground_truth_flat, prediction_flat)
+    print("Jaccard Index (IoU): {:.2f}".format(jaccard_index))
+
+    
+    
+    
+    
+    
+    
 
 
 
