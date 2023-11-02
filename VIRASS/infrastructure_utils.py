@@ -35,7 +35,7 @@ def create_corridor(power_line : geopandas.GeoDataFrame, corridor_size = 40):
     
     corridor = power_line.copy()
     corridor['geometry'] = corridor.buffer(distance = corridor_size, cap_style = 2) 
-    return power_line
+    return corridor
 
 
 def interpolate_line(line, distance):
@@ -145,7 +145,7 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
     tree_inventory = [] 
     
     # Make corridor (dilation)    
-    corridor = power_line.buffer(distance = 40, cap_style = 2) 
+    corridor = power_line.buffer(distance = large_corridor_side_size, cap_style = 2) 
     
     # Open the needed geoTiFF files
     satellite_src = rasterio.open(satellite_map_file)
@@ -155,9 +155,9 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
     # Copy the metadata from the source raster
     meta_data_corridor = satellite_meta_data.copy()
     
-    for index in range(0,10):
-    # for index, power_line_segment in corridor.items():
-        print(index)
+    # for index in range(0,15):
+    for index, power_line_segment in corridor.items():
+        print(str(index) + "/" + str(len(corridor.index)))
         
         # Clip the satellite image to the corridor       
         SAT_clipped, affine_transform_corridor = mask(satellite_src, [shape(corridor.geometry.values[index])], crop=True)
@@ -204,8 +204,7 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
                 trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
                     
                 # Finally, calculate the critical wind speed for the trees inside the corridor 
-                trees_within_corridor = tree_utils.calculate_gap_factor(trees_within_corridor, crowns)
-                
+                trees_within_corridor = tree_utils.calculate_shield_factor(trees_within_corridor, crowns)                
                 crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
                 
 #                     # trees_within_corridor = ges.tree_utils.calculate_critical_wind_speed_breakage(trees_within_corridor, 
@@ -224,6 +223,71 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
     tree_mask_src.close()           
     
     return tree_inventory
+
+
+
+@utils.measure_time
+def static_risk_map(tree_inventory, small_corridor_side_size = 10, power_line_height = 10.8, margin = 1.5):
+    # Create a copy of the relevant columns from the tree_inventory DataFrame
+    static_risk_map = tree_inventory[["pointX", "pointY", "geometry", "dst_to_line", "tree_height", "power_line_segment"]].copy()
+    
+    # Calculate the threat based on distance and height
+    threat = np.sqrt(static_risk_map['dst_to_line']**2 + power_line_height**2) - margin - static_risk_map['tree_height']
+    
+    # Assign static risk values
+    static_risk_map['can_hit'] = np.where(threat <= 0, 1, 0)
+    
+    # Set trees outside the corridor a static risk of 0
+    static_risk_map['can_hit'] = np.where(static_risk_map['dst_to_line'] > small_corridor_side_size, 0, static_risk_map['can_hit'])
+    
+    return static_risk_map
+
+
+
+@utils.measure_time
+def dynamic_risk_map(tree_inventory, wind_direction = 'E', wind_gust_speed = 20,  power_line_height = 10.8, margin = 1.5, power_line = None ):
+    dynamic_risk_map = tree_inventory.copy()
+    
+    # Calculate the critical wind speed
+    dynamic_risk_map = tree_utils.calculate_critical_wind_speed_breakage(dynamic_risk_map, wind_direction = wind_direction)
+    assert 'Crit_wspeed_breakage' in dynamic_risk_map.columns
+    
+    # Assign dynamic risk values
+    dynamic_risk_map['can_fall'] = np.where(dynamic_risk_map['Crit_wspeed_breakage'] >= wind_gust_speed, 0, 1)
+    
+    
+    def _angle_from_wind_rose_category(category):
+        categories = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
+        if category in categories:
+            index = categories.index(category)
+            return (index * 45) % 360
+        else:
+            raise ValueError("Invalid wind rose category")
+            
+            
+    def calculate_can_hit(row):
+        if power_line is not None:
+            power_line_segment = power_line.iloc[row['power_line_segment']]['geometry']
+            nearest_point = power_line_segment.interpolate(power_line_segment.project(Point(row['pointX'], row['pointY'])))
+            angle = (np.degrees(np.arctan2(row['pointY'] - nearest_point.y, row['pointX'] - nearest_point.x)) + 180) % 360
+            return int(abs(angle - _angle_from_wind_rose_category(wind_direction)) <= 22.5)
+        return 0
+    
+    
+    is_facing_power_line = dynamic_risk_map.apply(calculate_can_hit, axis=1)
+    threat = np.sqrt(dynamic_risk_map['dst_to_line']**2 + power_line_height**2) - margin - dynamic_risk_map['tree_height']
+    can_collide = np.where(threat <= 0, 1, 0)
+    
+    # Trees can hit the power line if they are facing the power line and can collide with it
+    dynamic_risk_map['can_hit'] = is_facing_power_line * can_collide
+
+
+    # only trees that can fall can hit
+    dynamic_risk_map['can_hit'] = dynamic_risk_map['can_hit'] * dynamic_risk_map['can_fall'] 
+    return dynamic_risk_map
+
+    
+
             
             
             
