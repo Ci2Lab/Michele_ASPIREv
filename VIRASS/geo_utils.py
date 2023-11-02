@@ -10,7 +10,10 @@ import os
 import rasterio
 from affine import Affine
 from PIL import Image
- 
+from shapely.geometry import shape
+from fiona import collection
+import geopandas
+
 from . import utils
 from . import io
   
@@ -264,6 +267,21 @@ def create_alpha_channel(SAT_image, meta_data):
 
 
 
+def raster_to_vector(input_raster = "alpha_channel.tif", output_vector = "output_vector.gpkg"):
+    crs = 'epsg:32632' 
+    with rasterio.open(input_raster) as src:
+        mask = src.read(1)
+        shapes = list(rasterio.features.shapes(mask, transform=src.transform))
+
+    # Filter shapes based on the white pixels
+    white_shapes = [s for s in shapes if s[1] == 255]
+    shape_info = white_shapes[0]
+    polygon = shape(shape_info[0])
+    gdf = geopandas.GeoDataFrame(crs = crs, geometry = [polygon])
+    gdf.to_file(output_vector, driver="GPKG")
+
+
+
 
 def generate_fake_meta_data(image: np.array):
     from affine import Affine
@@ -301,7 +319,28 @@ def split_raster_to_parts(SAT_image, N, tmp_folder = "tmp"):
         print("Parts already exist")
 
 
+def align_maps(A, B):
+    """
+    A and B are two images that are supposed to have the same dimensions. 
+    Sometimes, the height/width between A and B might be off by one pixel due to some clipping.
+    This will perform a small alignment"""
+    if A.shape == B.shape:
+        print("X_map and y_map have the same dimensions")
+    else:
+        print("X_map shape {} \ny_map shape {}".format(A.shape, B.shape))
+        print('--Resizing to same shape')
+        h, w, _ = [min(s) for s in zip(A.shape, B.shape)]
+        A = A[:h,:w,:]
+        B = B[:h,:w,:]
+        print("SAT shape {} \ny_map shape {}".format(A.shape, B.shape))
+    return A, B
 
+
+
+
+            
+            
+            
 class tilesGenerator():
     def __init__(self, image, stepSize, x_offset = 0, y_offset = 0):
         assert utils.is_channel_last(image)
