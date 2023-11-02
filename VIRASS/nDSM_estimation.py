@@ -29,7 +29,7 @@ import os
 import pickle
 from sklearn.model_selection import train_test_split
 import numpy as np
-from skimage import morphology 
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 
@@ -57,7 +57,8 @@ class nDSMmodeler(RSClassifier.RSClassifier):
             if architecture == "unet":                                                                
                 model = architectures.unet(input_shape = input_shape, task = "regression")
             elif architecture == "unet_attention":
-                model = architectures.UNet_Attention(input_shape = input_shape, task = "regression")
+                dropout = self.config['config_training']['dropout']
+                model = architectures.UNet_Attention(input_shape = input_shape, task = "regression", dropout = dropout)
             else:
                 raise NotImplementedError()
            
@@ -215,19 +216,75 @@ class nDSMmodeler(RSClassifier.RSClassifier):
         
         with open(self.working_dir + self.config['config_training']['model_name'] + "_history", "rb") as input_file:
             history = pickle.load(input_file)
-            
-        plt.figure(figsize=(10,5))
-        plt.plot(history['mean_absolute_error'], label = "mean_absolute_error (training)")
-        plt.plot(history['val_mean_absolute_error'], label = "mean_absolute_error (validation)")
         
-        plt.xlabel("Epochs")
-        plt.xlabel("[meters]")
-        # plt.ylabel("Metric")
-        plt.legend(loc = "upper right", prop={'size': 20})
+        fig, ax1 = plt.subplots(figsize=(10, 5))
+        
+        ax1.plot(history['loss'], label = "MSE (training)")
+        plt.plot(history['val_loss'], label = "MSE (validation)")
+        
+        ax1.plot(history['mean_absolute_error'], label = "MAE (training)")
+        plt.plot(history['val_mean_absolute_error'], label = "MAE (validation)")
+        
+        ax1.set_xlabel('Epochs')
+        ax1.set_ylabel('Metrics')
+        ax1.set_ylim(0, 20)
+        
+        ax2 = ax1.twinx()
+        ax2.set_yscale('log')
+        ax2.plot(history['lr'], label = "learning rate", color='purple', linestyle='--')
+        ax2.tick_params(axis='y', labelcolor='purple')
+        # ax2.set_ylabel('Learning rate')
+        
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines = lines1 + lines2
+        labels = labels1 + labels2
+        plt.legend(lines, labels, loc = 'best') #prop={'size': 20}
         plt.tight_layout()
+        
+        
+        
+        
+    
 
 
     
+def compute_performance(GT, pred):
+        
+    GT, pred = geo_utils.align_maps(GT, pred)
+    
+    GT = GT.ravel()
+    pred = pred.ravel()
+    
+    # --Calculate evaluation metrics
+    
+    # Mean Absolute Error
+    mae = mean_absolute_error(GT, pred)  
+    print("\nMean Absolute Error (MAE): {:.2f}".format(mae))
+    
+    # Mean Squared Error
+    mse = mean_squared_error(GT, pred)        
+    # Root Mean Squared Error
+    rmse = np.sqrt(mse)                           
+    print("Root Mean Squared Error (RMSE): {:.2f}".format(rmse))
+    
+    # R-squared
+    r2 = r2_score(GT, pred)              
+    print("R-squared (R2): {:.2f}".format(r2))
+    
+    mask = np.where(GT != 0)
+    error = (GT[mask] - pred[mask]).ravel()
+    plt.hist(abs(error), bins = 50)
+    plt.xlabel("Error [meters]")
+    plt.ylabel("distribution")
+    # plt.yscale("log")
+    plt.tight_layout()
+    
+    
+    
+    
+    
+
 
 
 
