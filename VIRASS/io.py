@@ -96,6 +96,25 @@ def load_infrastructure_line(filename: str, crs = 32632):
     else:
         # Load and convert to a suitable CRS
         return geopandas.read_file(filename).to_crs("epsg:" + str(crs))
+    
+    
+    
+def load_tree_inventory(tree_inventory_path):
+    if not os.path.isfile(tree_inventory_path):
+        relocate = utils.confirmCommand("File: <"+ tree_inventory_path + "> does not exist. \n Do you want to locate it in other directories?")
+        if relocate:
+            # ask for new filename
+            tree_inventory_path =  utils.open_file(title = "Open tree inventory file:")
+        else:
+            tree_inventory_path = None
+        
+        if tree_inventory_path is None:
+            print("Tree inventory not loaded")
+            return None
+        else:
+            return geopandas.read_file(tree_inventory_path, driver = "GPKG")
+        
+    
             
             
             
