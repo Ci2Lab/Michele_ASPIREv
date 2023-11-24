@@ -60,7 +60,7 @@ def convert_to_channel_last(SAT_image : np.array, verbose = True):
             print(str(old_shape) + "-->" + str(new_shape))
     else:
         if verbose:
-            print("image is already channel_last" + str(old_shape))
+            print("image is already channel_last" + str(SAT_image.shape))
     return SAT_image
         
  
@@ -79,7 +79,7 @@ def convert_to_channel_first(SAT_image : np.array, verbose = True):
         
     else:
         if verbose:
-            print("image is already channel_first" + str(old_shape))
+            print("image is already channel_first" + str(SAT_image.shape))
     return SAT_image
             
    
@@ -310,6 +310,7 @@ def open_file(title=""):
                                       filetypes = (("tif images", ".tif"),
                                                    ("numpy arrays", ".npy"),
                                                    ("shapefiles", ".shp"),
+                                                   ("geopackage", ".gpkg"),
                                                    ("all", "*")))
     # Here, window.wm_attributes('-topmost', 1) and "parent=window" argument 
     # help open the dialog box on top of other windows
