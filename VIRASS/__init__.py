@@ -13,5 +13,6 @@ from . import geo_utils
 from . import architectures
 from . import tree_utils
 from . import infrastructure_utils
+from . import dataset
 
 
