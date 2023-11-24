@@ -354,64 +354,69 @@ def extract_tree_crown_multi_scale(SAT_map, tree_mask, meta_data = None,
 def add_tree_species(df_crowns, tree_species_map_file):
     """Add tree species as an additional field in the df_crowns (pandas DataFrame)"""
     
-    src = rasterio.open(tree_species_map_file)
-    pts = df_crowns[['pointX', 'pointY']] 
-    pts.index = range(len(pts))  
-    coords = [(x,y) for x, y in zip(pts.pointX, pts.pointY)]
-    # Sample the raster at every point location and store values in DataFrame
-    df_crowns['tree_species'] = [x[0] for x in src.sample(coords)]
-    src.close()
-    
-    # Sometimes the tree_species_map don't have a specie label when a tree crown is detected.
-    # This is because the <TreeSpecieClassifier> is trained separately from the <TreeSegmenter>, and sometimes
-    # it misses some trees. 
-    # Therefore, tree crowns without a specie label are assigned a species based on the surrouding species.
-    
-    valid_points = df_crowns[df_crowns['tree_species'].isin([1, 2, 3])]    
-    
-    if not len(valid_points.index) == 0:
-        invalid_points = df_crowns[df_crowns['tree_species'] == 0]
-        # Build a KD-tree using the coordinates of the valid points
-        from scipy.spatial import cKDTree
-        valid_tree = cKDTree(valid_points.geometry.centroid.apply(lambda geom: (geom.centroid.x, geom.centroid.y)).tolist())
-    
-        # For each invalid point, find the closest valid point using the KD-tree and assign its 'tree_species' value:
-        for idx, invalid_point in invalid_points.iterrows():
-            nearest_idx = valid_tree.query([invalid_point.geometry.centroid.x, invalid_point.geometry.centroid.y], k=1)[1]
-            nearest_valid_point = valid_points.iloc[nearest_idx]
-            df_crowns.at[idx, 'tree_species'] = nearest_valid_point['tree_species']
-            
-            
-        replacement_mapping = {1: 'spruce', 2: 'pine', 3: 'deciduous'}
-    
-        # Use the replace method to rename values
-        df_crowns['tree_species'] = df_crowns['tree_species'].replace(replacement_mapping)
+    if not tree_species_map_file is None:
+        src = rasterio.open(tree_species_map_file)
+        pts = df_crowns[['pointX', 'pointY']] 
+        pts.index = range(len(pts))  
+        coords = [(x,y) for x, y in zip(pts.pointX, pts.pointY)]
+        # Sample the raster at every point location and store values in DataFrame
+        df_crowns['tree_species'] = [x[0] for x in src.sample(coords)]
+        src.close()
         
+        # Sometimes the tree_species_map don't have a specie label when a tree crown is detected.
+        # This is because the <TreeSpecieClassifier> is trained separately from the <TreeSegmenter>, and sometimes
+        # it misses some trees. 
+        # Therefore, tree crowns without a specie label are assigned a species based on the surrouding species.
+        
+        valid_points = df_crowns[df_crowns['tree_species'].isin([1, 2, 3])]    
+        
+        if not len(valid_points.index) == 0:
+            invalid_points = df_crowns[df_crowns['tree_species'] == 0]
+            # Build a KD-tree using the coordinates of the valid points
+            from scipy.spatial import cKDTree
+            valid_tree = cKDTree(valid_points.geometry.centroid.apply(lambda geom: (geom.centroid.x, geom.centroid.y)).tolist())
+        
+            # For each invalid point, find the closest valid point using the KD-tree and assign its 'tree_species' value:
+            for idx, invalid_point in invalid_points.iterrows():
+                nearest_idx = valid_tree.query([invalid_point.geometry.centroid.x, invalid_point.geometry.centroid.y], k=1)[1]
+                nearest_valid_point = valid_points.iloc[nearest_idx]
+                df_crowns.at[idx, 'tree_species'] = nearest_valid_point['tree_species']
+                
+                
+            replacement_mapping = {1: 'spruce', 2: 'pine', 3: 'deciduous'}
+        
+            # Use the replace method to rename values
+            df_crowns['tree_species'] = df_crowns['tree_species'].replace(replacement_mapping)
+            
+        else:
+            # if there are no trees with labels there
+            # Assign tree_specie as "deciduous"
+            # TODO: In future, we can think to just delete those trees
+            # Also, having the model <TreeSpecieClassifier> to detect trees
+            # withjout the external <TreeSegmenter> would solve the problem
+            df_crowns['tree_species'] = "deciduous"        
+        return df_crowns
     else:
-        # if there are no trees with labels there
-        # Assign tree_specie as "deciduous"
-        # TODO: In future, we can think to just delete those trees
-        # Also, having the model <TreeSpecieClassifier> to detect trees
-        # withjout the external <TreeSegmenter> would solve the problem
-        df_crowns['tree_species'] = "deciduous"
-    
-    return df_crowns
+       df_crowns['tree_species'] = np.nan 
 
 
 def add_tree_height(df_crowns, nDSM):
     """Add tree height as an additional field in the df_crowns (pandas DataFrame)"""
     
-    src = rasterio.open(nDSM)
-    pts = df_crowns[['pointX', 'pointY']] 
-    pts.index = range(len(pts))  
-    coords = [(x,y) for x, y in zip(pts.pointX, pts.pointY)]
-    # Sample the raster at every point location and store values in DataFrame
-    df_crowns['tree_height'] = [x[0] for x in src.sample(coords)]
-    src.close()
-    
-    # Sanity check: clip the height between 1.4 and 40
-    df_crowns['tree_height'] = df_crowns['tree_height'].clip(lower = 1.4, upper = 40) 
-    return df_crowns
+    if not nDSM is None:        
+        src = rasterio.open(nDSM)
+        pts = df_crowns[['pointX', 'pointY']] 
+        pts.index = range(len(pts))  
+        coords = [(x,y) for x, y in zip(pts.pointX, pts.pointY)]
+        # Sample the raster at every point location and store values in DataFrame
+        df_crowns['tree_height'] = [x[0] for x in src.sample(coords)]
+        src.close()
+        
+        # Sanity check: clip the height between 1.4 and 40
+        df_crowns['tree_height'] = df_crowns['tree_height'].clip(lower = 1.4, upper = 40) 
+        return df_crowns
+    else:
+        df_crowns['tree_height'] = np.nan
 
 
     
