@@ -30,7 +30,7 @@ It is built on top of standard geo-libraries such as rasterio, geopandas, and sh
 
 # Installation
 
-VIRASS can be install using pip (*TODO*)
+VIRASS will be install using pip (*TODO*)
 
 ```
 pip install virass
@@ -91,24 +91,21 @@ The following Jupyter notebooks show how to use VIRASS for particular tasks, exl
 <img src="images/readme/nDSM.png" width="200"/>
 </p>
 
-[Code]
+[Code](/Block_tree_height_estimation.ipynb)
 
 
 ## Risk map generation
 
-<img src="images/readme/crowns_example.png" width="600">
+<img src="images/readme/tree_inventory_3D_2.png" width="300">
 
 [Code](/main.ipynb) 
-
-
-# Licensing 
 
 
 # Disclaimer
 
 This library is made available under an open-science paradigm with the aspiration that it proves to be beneficial. Nevertheless, the author does not provide any assurance of its merchantability or fitness for a specific purpose.
 
-If you have suggestions or improvements to suggest, feelfree to contact me at: michele.gazzea@gmail.com
+If you have suggestions or improvements to suggest, feel free to contact me at: michele.gazzea@gmail.com
 
 
 
