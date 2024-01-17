@@ -19,7 +19,7 @@ from . import utils
 from . import io
   
  
-def multiband_to_RGB(SAT_image, source = "Pleiades"):
+def multiband_to_RGB(SAT_image, source = "WorldView"):
     """
     Take the RGB components of a satellite multi-channel image
     """
