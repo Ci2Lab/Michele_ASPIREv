@@ -198,27 +198,24 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
                 # Add a field to write the power line segment                 
                 crowns['power_line_segment'] = index 
                 # Add tree species
-                # crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
+                crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
                 
                 # Add tree height
-                # crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
+                crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
                 
                 # Calculate distance from the power line
                 crowns['dst_to_line'] = crowns['geometry'].apply(lambda point: point.centroid.distance(power_line.geometry.iloc[index]))
                 
                 # Extract trees within the corridor
-                # crowns['within'] = (crowns['dst_to_line'] < small_corridor_side_size).astype(int)                
+                crowns['within'] = (crowns['dst_to_line'] < small_corridor_side_size).astype(int)                
                 
                 # Estimate CBH from height for the trees inside the corridor
-                # trees_within_corridor = crowns[crowns['dst_to_line'] < small_corridor_side_size]
-                # trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
+                trees_within_corridor = crowns[crowns['dst_to_line'] < small_corridor_side_size]
+                trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
                     
                 # Finally, calculate the critical wind speed for the trees inside the corridor 
-                # trees_within_corridor = tree_utils.calculate_shield_factor(trees_within_corridor, crowns)                
-                # crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
-                
-#                     # trees_within_corridor = ges.tree_utils.calculate_critical_wind_speed_breakage(trees_within_corridor, 
-#                     #                                                                               wind_direction = 'E')
+                trees_within_corridor = tree_utils.calculate_shield_factor(trees_within_corridor, crowns)                
+                crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
                     
                 tree_inventory.append(crowns)
                         
@@ -238,6 +235,7 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
 
 @utils.measure_time
 def static_risk_map(tree_inventory, small_corridor_side_size = 10, power_line_height = 10.8, margin = 1.5):
+    """ Assign value 1 to trees that can collide with power lines, 0 otherwise """
     # Create a copy of the relevant columns from the tree_inventory DataFrame
     static_risk_map = tree_inventory[["pointX", "pointY", "geometry", "dst_to_line", "tree_height", "power_line_segment"]].copy()
     
@@ -256,6 +254,10 @@ def static_risk_map(tree_inventory, small_corridor_side_size = 10, power_line_he
 
 @utils.measure_time
 def dynamic_risk_map(tree_inventory, wind_direction = 'E', wind_gust_speed = 20,  power_line_height = 10.8, margin = 1.5, power_line = None ):
+    """ Calculate the critical wind speed for all trees. 
+    Detect trees hat can fall due to input wind (can_fall = 1). For those that can fall, 
+    assign value 1 to trees that can collide with power lines (can_hit = 1) """
+    
     dynamic_risk_map = tree_inventory.copy()
     
     # Calculate the critical wind speed
