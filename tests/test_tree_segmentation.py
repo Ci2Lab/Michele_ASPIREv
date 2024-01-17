@@ -23,8 +23,9 @@ tree_pred_bn = ges.tree_segmentation.binarize_treeMap(tree_map_pred, thresholds 
 
 
 # Evaluation
-GT_test = ges.io.open_geoTiFF("_data/trees/tree_segmentation/GT/GT_tree_testing.tif", with_meta_data = False)
-tree_pred = ges.io.open_geoTiFF("_data/trees/tree_segmentation/tree_pred_testing.tif", with_meta_data = False) 
+GT_test = ges.io.open_geoTiFF("_data/trees/tree_segmentation/GT/GT_tree_testing_manually_refined.tif", with_meta_data = False)
+tree_pred = ges.io.open_geoTiFF("_data/trees/tree_segmentation/tree_pred_testing_" + tree_segmenter.config['config_training']['model_name'] + ".tif", 
+                                with_meta_data = False) 
 tree_pred_bn = ges.tree_segmentation.binarize_treeMap(tree_pred, thresholds = [100])
 ges.tree_segmentation.compute_performance(GT_test, tree_pred_bn)
 

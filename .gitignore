@@ -1,5 +1,7 @@
 *__pycache__*
 _data/
+_data_Lillisand/
+
 tmp/
 tree_crown_delineation/
 **.pptx
@@ -11,3 +13,6 @@ tree_crown_delineation/
 **.gz
 
 docs/DL_architectures/layers/
+
+
+

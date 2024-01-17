@@ -1,9 +1,11 @@
-import GridEyeS_lib as ges
+import VIRASS as ges
 import numpy as np
 from skimage import morphology
 import matplotlib.pyplot as plt
 from skimage.color import rgb2gray, label2rgb
 
+
+plt.close('all')
 
 """Load Satellite image"""
 
@@ -17,7 +19,11 @@ if not ("SAT_map" in locals()):
     SAT_map = ges.geo_utils.multiband_to_RGB(SAT_map)
 
 
-crowns = ges.tree_utils.extract_tree_crown(SAT_map, tree_mask_bn, crown_element = 4, meta_data = meta_data, scale_analysis = False, 
+SAT_map_small = SAT_map[:200, -200:, :]
+tree_mask_bn_small = tree_mask_bn[:200, -200:, :]
+plt.style.use('default')
+
+crowns = ges.tree_utils.extract_tree_crown(SAT_map_small, tree_mask_bn_small, crown_element = 4, meta_data = meta_data, scale_analysis = False, 
                                            plot = True, save_output = False, output_filename = "tree_crown_delineation/crown_2.gpkg")
 
 
