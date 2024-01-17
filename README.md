@@ -30,7 +30,7 @@ It is built on top of standard geo-libraries such as rasterio, geopandas, and sh
 
 # Installation
 
-VIRASS will be install using pip (*TODO*)
+VIRASS will be installed using pip (*TODO*)
 
 ```
 pip install virass
@@ -60,7 +60,7 @@ tree_map_predicted = tree_segmenter.generate_tree_map(SAT_image_input)
 
 # Try demos using Jupyter Notebook
 
-The following Jupyter notebooks show how to use VIRASS for particular tasks, exlpaining step by step the functions. 
+The following Jupyter notebooks show how to use VIRASS for particular tasks, explaining step by step the functions. 
 
 
 ## Vegetation segmentation 
