@@ -111,8 +111,8 @@ def load_tree_inventory(tree_inventory_path):
         if tree_inventory_path is None:
             print("Tree inventory not loaded")
             return None
-        else:
-            return geopandas.read_file(tree_inventory_path, driver = "GPKG")
+    else:
+        return geopandas.read_file(tree_inventory_path, driver = "GPKG")
         
     
             
