@@ -1,5 +1,5 @@
 import rasterio
-import GridEyeS_lib as ges
+import VIRASS as ges
 import PIL
 import numpy as np
 import os
@@ -106,8 +106,24 @@ if __name__ == "__main__":
     warper.warping_completed = True
     
     # # Load 
-    warper.load_PNG_warped("warping/nDSM_warped.png")
+    warper.load_PNG_warped("_data/trees/3D_modeling/GT/warping/warped_image.png")
     warper.pixel_to_height()
     warper.export_warped_DHM()
+    
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
     
 
