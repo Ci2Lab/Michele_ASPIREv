@@ -55,24 +55,34 @@ def interpolate_line(line, distance):
 
 
 
+@utils.measure_time 
 def scan_lines(infr_line : geopandas.GeoDataFrame, distance, save_output = False):
     """
     Extract points along the infrastructure line
     """
+    
+    # Initialize an empty list to store the points
     locations = []
-    for index, line in infr_line.iterrows():
-        #get points along road
-        locations.append(interpolate_line(line['geometry'], distance))
     
-    # locations = list of np.array. Each array contains coordinates along one line.
-    # we merge them all into one file since risk will be compute location-wise and not line-wise       
-    points = np.concatenate(locations, axis = 0)
+    # Iterate through the infrastructure lines
+    for geometry in infr_line['geometry']:
+        # Create points along the line
+        points = interpolate_line(geometry, distance)
+        locations.append(points)
+        
+    # Concatenate the arrays into a single array
+    points = np.concatenate(locations, axis=0)  
     
-    # Generate a GeoSeries of points
-    points = geopandas.GeoSeries(map(Point, zip(points[:,0], points[:,1])), crs="EPSG:32632")
+    # Convert the points array into a GeoSeries
+    geo_points = geopandas.GeoSeries([Point(x, y) for x, y in points], crs="EPSG:32632")
+    
     if save_output:
-        points.to_file(utils.open_dir("Where to save the power line locations?") + "extracted_points.gpkg", driver = 'GPKG')
-    return points
+        # Save the GeoSeries to a GeoPackage file
+        output_path = "extracted_points.gpkg"
+        geo_points.to_file(output_path, driver='GPKG')
+        
+    return geo_points
+
             
             
 # DEPRECATED            
@@ -188,10 +198,10 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
                 # Add a field to write the power line segment                 
                 crowns['power_line_segment'] = index 
                 # Add tree species
-                crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
+                # crowns = tree_utils.add_tree_species(crowns, tree_species_map_file = tree_species_map_file)
                 
                 # Add tree height
-                crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
+                # crowns = tree_utils.add_tree_height(crowns, nDSM = nDSM_map_file)
                 
                 # Calculate distance from the power line
                 crowns['dst_to_line'] = crowns['geometry'].apply(lambda point: point.centroid.distance(power_line.geometry.iloc[index]))
@@ -200,12 +210,12 @@ def generate_tree_inventory_along_power_lines(power_line : pandas.DataFrame, sat
                 # crowns['within'] = (crowns['dst_to_line'] < small_corridor_side_size).astype(int)                
                 
                 # Estimate CBH from height for the trees inside the corridor
-                trees_within_corridor = crowns[crowns['dst_to_line'] < small_corridor_side_size]
-                trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
+                # trees_within_corridor = crowns[crowns['dst_to_line'] < small_corridor_side_size]
+                # trees_within_corridor = tree_utils.estimate_DBH(trees_within_corridor)
                     
                 # Finally, calculate the critical wind speed for the trees inside the corridor 
-                trees_within_corridor = tree_utils.calculate_shield_factor(trees_within_corridor, crowns)                
-                crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
+                # trees_within_corridor = tree_utils.calculate_shield_factor(trees_within_corridor, crowns)                
+                # crowns = pandas.merge(crowns, trees_within_corridor, how = 'left')
                 
 #                     # trees_within_corridor = ges.tree_utils.calculate_critical_wind_speed_breakage(trees_within_corridor, 
 #                     #                                                                               wind_direction = 'E')
@@ -286,6 +296,34 @@ def dynamic_risk_map(tree_inventory, wind_direction = 'E', wind_gust_speed = 20,
     dynamic_risk_map['can_hit'] = dynamic_risk_map['can_hit'] * dynamic_risk_map['can_fall'] 
     return dynamic_risk_map
 
+    
+
+def assign_risk_to_power_line(power_line, risk_map, point_distance = 20, trees_nearby = 10, 
+                              save_output = False, save_path = ""):
+    """
+    Compute points along the power line and count how many dangerous trees there are nearby 
+    """
+    # Extract points along the power line every 'point_distance'
+    points_along_line = scan_lines(power_line, distance = point_distance)
+    assert 'can_hit' in risk_map
+    dangerous_trees = risk_map[risk_map['can_hit'] == 1]['geometry'].centroid 
+
+    # Initialize an empty list to store counts
+    counts = []
+    for point in points_along_line:
+        # Calculate the number of dangerous trees within 10 meters of the point
+        count = sum(point.distance(dangerous_tree) < trees_nearby for dangerous_tree in dangerous_trees)
+        counts.append(count)
+
+    # Convert the list of counts to a NumPy array
+    counts_array = np.array(counts)   
+
+    geo_df = geopandas.GeoDataFrame({'geometry': points_along_line})
+    geo_df['counts'] = counts_array
+    
+    if save_output:
+        geo_df.to_file(save_path, driver = "GPKG")
+    return geo_df
     
 
             
