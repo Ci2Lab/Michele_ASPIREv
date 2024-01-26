@@ -1,4 +1,4 @@
-import VIRASS as ges
+import ASPIREv as ges
 import numpy as np
 from skimage import morphology
 import matplotlib.pyplot as plt

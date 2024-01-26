@@ -1,4 +1,4 @@
-import VIRASS as ges
+import ASPIREv as ges
 import matplotlib.pyplot as plt
 import numpy as np
 

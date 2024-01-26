@@ -12,7 +12,6 @@ def _create_dataset(SAT_image, meta_data, patch_number, patch_radius, save_patch
     
     # The list implementation is faster than index assign a value within a for loop 
     X = []
-    Y = []
      
     height = SAT_image.shape[0]
     width = SAT_image.shape[1]

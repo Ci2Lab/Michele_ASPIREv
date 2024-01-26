@@ -1,13 +1,13 @@
-# VIRASS
+# ASPIRE-V
 
 [![Github Actions](https://github.com/weecology/DeepForest/actions/workflows/Conda-app.yml/badge.svg)](https://github.com/weecology/DeepForest/actions/workflows/Conda-app.yml)
 [![Documentation Status](https://readthedocs.org/projects/deepforest/badge/?version=latest)](http://deepforest.readthedocs.io/en/latest/?badge=latest)
 [![Version](https://img.shields.io/pypi/v/DeepForest.svg)](https://pypi.python.org/pypi/DeepForest)
 
 
-![img](docs/logo.png)
+![img](docs/logo2.png)
 
-VIRASS (Vegetation and Infrastructures Risk Assessment through Satellite Scanning) is a Python package for assessing vegetation-related risk along infrastructure lines. VIRASS implements sub-modules such as
+ASPIRE-V (Artificial Intelligence and Space-based Monitoring for Power Lines Risk Evaluation against Vegetation) is a Python package for assessing vegetation-related risk along infrastructure lines. ASPIRE-V implements sub-modules such as
 - vegetation segmentation
 - tree species classification
 - height estimation
@@ -24,25 +24,25 @@ It is built on top of standard geo-libraries such as rasterio, geopandas, and sh
  Vegetation along the infrastructure lines is one of the major causes of outages, especially along roadways and power lines. Trees can fall after strong winds, disrupting the lines and blocking the roads. If a tree is growing too close to the power line, it might also trigger wildfires.
  Traditional approaches based on visual inspections are extremely time-consuming and very costly.
  
- *VIRASS* aims to ease the process of infrastructure monitoring, providing tools to characterize vegetation and calculate threat posing to nearby infrastructure.
+ *ASPIRE-V* aims to ease the process of infrastructure monitoring, providing tools to characterize vegetation and calculate threat posing to nearby infrastructure.
   
 
 
 # Installation
 
-VIRASS will be installed using pip (*TODO*)
+ASPIRE-V will be installed using pip (*TODO*)
 
 ```
-pip install virass
+pip install ASPIREv
 ```
 
 # Basic usage
 
-VIRASS is designed to be very easy to use, implementing many functions "under the curtains". 
+ASPIRE-V is designed to be very easy to use, implementing many functions "under the curtains". 
 The code snippet below provides the code to segment a satellite image and detect trees, with few lines of code.
 
 ```Python
-import VIRASS as ges
+import ASPIRE-V as ges
 # Initialize a tree segmenter
 tree_segmenter = ges.tree_segmentation.TreeSegmenter(config_file = "tree_segmenter_config.yaml")
 

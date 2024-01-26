@@ -1,4 +1,4 @@
-import VIRASS as ges
+import ASPIREv as ges
 import cv2
 import gc
 import numpy as np
