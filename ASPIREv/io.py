@@ -1,5 +1,5 @@
 """
-Input-Output functions
+input-output functions
 """
 
 import numpy as np
@@ -10,7 +10,7 @@ import geopandas
 from . import utils
 
 
-def open_geoTiFF(filename, with_meta_data = True):
+def open_geoTIFF(filename, with_meta_data = True, verbose = True):
     """
     Parameters
     ----------
@@ -44,7 +44,7 @@ def open_geoTiFF(filename, with_meta_data = True):
         file_src.close()
         
         # transpose the image as channel-last
-        SAT_image = utils.convert_to_channel_last(SAT_image)
+        SAT_image = utils.convert_to_channel_last(SAT_image, verbose = verbose)
         if with_meta_data:
             return SAT_image, meta_data
         else:
@@ -53,7 +53,7 @@ def open_geoTiFF(filename, with_meta_data = True):
     
     
     
-def export_GEOtiff(filename: str, SAT_image: np.array, meta_data: dict):
+def export_geoTIFF(filename: str, SAT_image: np.array, meta_data: dict, verbose = True):
     """
     Export a numpy array "Map" into GeoTIFF
     Input:  filename: path+name.tif of the exported output  
@@ -66,7 +66,7 @@ def export_GEOtiff(filename: str, SAT_image: np.array, meta_data: dict):
             # add the depth dimension
             SAT_image = np.expand_dims(SAT_image, axis=-1)
         
-        SAT_image = utils.convert_to_channel_first(SAT_image)
+        SAT_image = utils.convert_to_channel_first(SAT_image, verbose = verbose)
         meta_data['count'] = SAT_image.shape[0]    
         assert meta_data['count'] <=15 #sanity check: bands should be less than 8 in normal images
         
