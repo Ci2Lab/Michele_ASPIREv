@@ -2,36 +2,53 @@
 @author: Michele Gazzea
 """
 import matplotlib.pyplot as plt
-from osgeo import ogr, osr
+from osgeo import ogr, osr, gdal
 import numpy as np
 from scipy import ndimage
 from skimage import morphology 
 import os
 import rasterio
 from affine import Affine
-from shapely.geometry import shape
+from shapely.geometry import shape, box
 import geopandas
-import cv2
 import gc
+from shapely.geometry import mapping
+from rasterio.mask import mask
+from rasterio.windows import Window
 
-
+# Optional dependency:
+    #cv2 is required to work with this the pansharpen module, but in terms of the general usage of 
+    # storm-ASPIREv library, it is not required.
+    # TODO: In future, it could be replace by scipy and remove completely the dependency.
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+    
 from . import utils
 from . import io
   
- 
-def multiband_to_RGB(SAT_image, source = "WorldView"):
+
+def imshow(SAT_image):
+    SAT_image = multiband_to_RGB(SAT_image)
+    plt.figure()
+    plt.imshow(SAT_image)
+    
+    
+def multiband_to_RGB(SAT_image, verbose = True):
     """
     Take the RGB components of a satellite multi-channel image
     """
     
     # Ensure the bands are in the last axis
-    assert utils.is_channel_last(SAT_image)
-    
-    if source == "WorldView":
-        assert SAT_image.shape[-1] == 8
+    SAT_image = utils.convert_to_channel_last(SAT_image, verbose = verbose)
+    number_of_channels = SAT_image.shape[-1] 
+    if verbose:
+        print("Number of bands: {}".format(number_of_channels))
+
+    if number_of_channels == 8: 
         SAT_image = np.take(SAT_image, indices = [4,2,1], axis = -1)
-    elif source == "Pleiades":
-        assert SAT_image.shape[-1] == 4
+    elif number_of_channels == 4:
         SAT_image = np.take(SAT_image, indices = [0,1,2], axis = -1)
     else:
         print("Provide indices for Red:")
@@ -40,90 +57,88 @@ def multiband_to_RGB(SAT_image, source = "WorldView"):
         GREEN_index = input()
         print("Provide indices for Blue:")
         BLUE_index = input()
-        SAT_image = np.take(SAT_image, indices = [RED_index,GREEN_index,BLUE_index], axis = -1)
-        
+        SAT_image = np.take(SAT_image, indices = [RED_index,GREEN_index,BLUE_index], axis = -1) 
     return SAT_image 
     
+
+def compute_ndvi(satellite_image: np.array):
+    assert utils.is_channel_last(satellite_image)
     
-  
+    satellite_image = satellite_image.astype('float32')
     
-def preProcessImage(SAT_filename, save=False, NDVI = True, shift = False):
+    if satellite_image.shape[-1] == 8:
+        nir_index = 6
+        red_index = 4
+    elif satellite_image.shape[-1] == 4:
+        nir_index = 4
+        red_index = 1
+    else:
+        print("Provide indices for <infrared> band:")
+        nir_index = input()
+        print("Provide indices for <red> band:")
+        red_index = input()
+        
+    nir = np.take(satellite_image, indices = nir_index, axis = -1)
+    red = np.take(satellite_image, indices = red_index, axis = -1)       
+    ndvi = (nir - red) / (nir + red + 1e-10)  # Add a small number to avoid division by zero
+    ndvi = np.expand_dims(ndvi, axis=-1) # Add a dimension in the last axis
+    return ndvi
+
+
+def image_enchancement(image, verbose = True):
+    """
+    Process an image to enhance contrast based on 2-98% percentile (=color balance version) 
+    """
+    image = utils.convert_to_channel_last(image, verbose = verbose)
+    print(image.shape)
+    N_bands = image.shape[-1]
+    
+    # Create an alpha channel based on the sum of pixel values across all bands
+    # Set to 1 where sum > 0 (to keep), and 0 where sum = 0 (to discard)
+    _sum = np.sum(image, axis=-1, keepdims=True)
+    alpha = (abs(_sum) > 0).astype(int)   
+    # Repeat the alpha channel for each band to create a mask
+    mask = np.repeat(alpha == 0, repeats = N_bands, axis=-1)
+    image[mask] = np.nan
+       
+    for i in range(0, N_bands):
+        if verbose:
+            print("--Processing band: {} / {}".format(str(i+1), N_bands) )       
+        a = np.nanpercentile(image[:,:,i].flatten(), 2)
+        b = np.nanpercentile(image[:,:,i].flatten(), 98)
+        image[:,:, i] = np.clip( ( ( (image[:,:, i] - a) / (b-a) ) * 255) , 0,255)        
+        # image[np.where(image[:,:,i] == np.nan)] = 0
+    
+    image[np.isnan(image)] = 0
+    return image.astype('uint8')
+    
+ 
+     
+def pre_process(image_src, meta_data = None, save = False, verbose = True):
     """
     Take the 4Bands uint16 raw image and process it to convert it into uint8 image [0-255].
     Cumulative count cut to 2-98% percentile and MinMax stretch is applied
-    Preprocessing consist of:
-    - color balancing
-    - shifting (in case)
-    - NDVI calculation (in case)
     ---
     Input: path to the SAT image
     Output: preprocessed image  [uint8]
     """
-    
-    def shiftImage(meta_data, Xoffset, Yoffset):
-        meta_dataNew = meta_data#.copy() #it keeps the old one
-        meta_dataT = meta_dataNew['transform']
-        meta_dataNew['transform'] = Affine(meta_dataT[0], meta_dataT[1], meta_dataT[2]+Xoffset , \
-                               meta_dataT[3], meta_dataT[4], meta_dataT[5]+Yoffset)
-        return meta_dataNew
 
-    print("--Preprocessing image: " + SAT_filename)
-    #--Open GeoTIFF file and extract the image
-    file_src = rasterio.open(SAT_filename)
-    meta_data = file_src.profile    
-    bands = range(1, meta_data['count']+1)
-    Map = file_src.read(bands).astype('float32')
-    file_src.close()
+    # if image_src is a path, open the image
+    if isinstance(image_src, str):
+        print("--Preprocessing image: {}".format(image_src))
+        image, meta_data = io.open_geoTIFF(image_src, verbose = verbose)
+    else:
+        # check if image_src is already an array
+        assert isinstance(image_src, np.ndarray)
+        image = image_src.copy()
+        if meta_data is None:
+            raise ValueError("meta_data needs to be provided --is None now")
     
-    if shift:
-        print("--Shift image")
-        # meta_data = shiftImage(meta_data, 4, 0) #Shift image: Pleiades 
-        meta_data = shiftImage(meta_data, 8.41, 1.5) #Shift image: WorldView
-    
-    if NDVI:        
-        print("--Calculating NDVI")
-        # --Compute the NDVI
-        if meta_data['count']==4:
-            NDVI_map = np.expand_dims( ( Map[3,:,:] - Map[0,:,:] ) / ( Map[3,:,:] + Map[0,:,:] ), axis=0)
-        elif meta_data['count']==8:
-            NDVI_map = np.expand_dims( ( Map[6,:,:] - Map[4,:,:] ) / ( Map[6,:,:] + Map[4,:,:] ), axis=0)
-        else:
-            NDVI_map = None
+    image = image.astype('float32')
+    #--Process the satellite bands to enhance contrast (=color balance version) 
+    output = image_enchancement(image, verbose = verbose)
         
-        NDVI_map[np.where(NDVI_map < -1 )] = np.nan
-        a = np.nanpercentile(NDVI_map.flatten(), 2)
-        b = np.nanpercentile(NDVI_map.flatten(), 98)
-        NDVI_map = np.clip( ( ( (NDVI_map - a) / (b-a) ) * 255) , 0,255).astype('uint8')
-        
-    #--Process the raw uint16 satellite bands to enhance contrast (=color balance version)
-    alpha = np.expand_dims( np.clip( np.sum(Map, axis=0), 0, 1), axis=0 )
-    alpha[np.where(alpha==0)] = np.nan
-    
-    Map = alpha * Map
-        
-    for i in range(0, meta_data['count']):
-        print("--Processing band: " + str(i+1))
-        
-        a = np.nanpercentile(Map[i,:,:].flatten(), 2)
-        b = np.nanpercentile(Map[i,:,:].flatten(), 98)
-        Map[i,:,:] = np.clip( ( ( (Map[i,:,:] - a) / (b-a) ) * 255) , 0,255)    
-    
-        Map[np.where(Map[i,:,:] == np.nan)] = 0
-    output = Map.astype('uint8')
-    
-    if NDVI:
-        #--Concatenate RGB with NDVI 
-        output = np.concatenate( (output, NDVI_map), axis=0 ) 
-        
-
-    #--Export it as GeoTIFF file    
-    if save:
-        print("--Saving image")
-        meta_data['nodata'] = None
-        filename = SAT_filename.split('.')[-2] #remove ".tif" form the filename
-        io.export_GEOtiff(filename+'_preProcessed.tif', output, meta_data)    
-        print("--Image saved in: " + filename + '_preProcessed.tif')
-    return output    
+    return output, meta_data
 
 
 
@@ -253,35 +268,73 @@ def generate_tree_points(nDSM, NDVI, Th1 = 2, Th2 = 0.1):
 
 
 
-def create_alpha_channel(SAT_image, meta_data):
+def create_alpha_channel(SAT_image, refinement = "closing"):
     assert utils.is_channel_last(SAT_image)
-    """ no data have 0 in all channels. This works most of the time but some pixels have 0 values in all channels
-    even if they are valid pixels, need to distiguish the outer layer from the region within the satellite """    
+    """ 
+    no data have 0 in all channels. 
+    This works most of the time but some pixels have 0 values in all channels
+    even if they are valid pixels, need to distiguish the outer layer from the region 
+    within the satellite. Therefore, we perform a morphological closing on the 
+    pre-computed alpha channel 
+    
+    refinemnt: 
+        - `Opening` removes small objects from the foreground of an image, 
+    placing them in the background
+        - `Closing` removes small holes in the foreground, 
+        changing small islands of background into foreground. 
+    """    
             
-    alpha_layer = np.clip(np.sum(SAT_image, axis = -1), 0, 1)
+    #alpha_layer = np.clip(np.sum(SAT_image, axis = -1), 0, 1)
+    # _sum = np.sum(SAT_image, axis=-1, keepdims=True)
+    # alpha_layer = (abs(_sum) > 0).astype(int) 
+    alpha_layer = (SAT_image.sum(axis = -1) > 0)
+
     
     # Perform morphological closing on the pre-computed alpha channel
-    alpha_layer = (np.expand_dims( morphology.binary_closing(alpha_layer, 
-                                  selem = morphology.disk(radius = 3)), 
-        axis=-1)*255).astype('uint8')
+    
+    # WARNING: 'selem' argument is deprecated in favor of 'footprint' in newer versions of skimage!
+    # alpha_layer = (np.expand_dims( morphology.binary_closing(alpha_layer, 
+    #                               selem = morphology.disk(radius = 3)), 
+    #     axis=-1)*255).astype('uint8')
+    
+    if refinement == "opening":
+        alpha_layer = (morphology.binary_opening(alpha_layer, footprint = morphology.disk(radius = 10))*255).astype('uint8')
+    
+    elif refinement == "closing":
+        alpha_layer = (morphology.binary_closing(alpha_layer, footprint = morphology.disk(radius = 10))*255).astype('uint8')
+
     return alpha_layer
 
 
 
-def raster_to_vector(input_raster = "alpha_channel.tif", output_vector = "output_vector.gpkg"):
-    crs = 'epsg:32632' 
-    with rasterio.open(input_raster) as src:
-        mask = src.read(1)
-        shapes = list(rasterio.features.shapes(mask, transform=src.transform))
-
-    # Filter shapes based on the white pixels
-    white_shapes = [s for s in shapes if s[1] == 255]
-    shape_info = white_shapes[0]
-    polygon = shape(shape_info[0])
-    gdf = geopandas.GeoDataFrame(crs = crs, geometry = [polygon])
-    gdf.to_file(output_vector, driver="GPKG")
-
-
+def raster_to_vector(input_raster, meta_data = None, output_vector = "output_vector.gpkg", save = False):
+    from rasterio import features
+        
+    # if input_raster is a path, open the image
+    if isinstance(input_raster, str):
+        with rasterio.open(input_raster) as src:
+            crs = src.crs
+            mask = src.read(1)
+            shapes = list(features.shapes(mask, transform = src.transform))
+    else:
+        # check if input_raster is already an array
+        assert isinstance(input_raster, np.ndarray)
+        if meta_data is None:
+            raise ValueError("meta_data needs to be provided --is None now")
+        if len(input_raster.shape) == 3:
+            mask = input_raster[:,:,0]
+        else:
+            mask = input_raster
+        shapes = list(features.shapes(mask, transform = meta_data['transform']))
+        crs = meta_data['crs']
+    
+    white_shapes = [shape(s[0]) for s in shapes if s[1] == 255]
+    gdf = geopandas.GeoDataFrame(geometry=white_shapes)
+    gdf.crs = crs  # Set the coordinate reference system
+    
+    if save:
+        gdf.to_file(output_vector, driver="GPKG")
+    return gdf
 
 
 def generate_fake_meta_data(image: np.array):
@@ -298,28 +351,70 @@ def generate_fake_meta_data(image: np.array):
                  'interleave': 'pixel'}
     return meta_data
     
-    
-def split_raster_to_parts(SAT_image, N, tmp_folder = "tmp"):
-    
-    # Create a temporary folder to store the parts of the image
-    
+
+@utils.deprecated   
+def split_raster_to_parts(SAT_image, N, tmp_folder = "tmp", name = "part"):    
+    # Create a temporary folder to store the parts of the image    
     if not os.path.exists(tmp_folder):
         os.makedirs(tmp_folder)
     assert utils.is_channel_last(SAT_image)
     
-    if len(os.listdir(tmp_folder)) == 0:        
+    # Check if the directory is empty or if overwrite is implied by checking 
+    # the existence of specific parts
+    existing_files = os.listdir(tmp_folder)
+    parts_exist = any(name in file for file in existing_files)
+    
+    # Proceed to split if no parts exist
+    if not parts_exist:      
         # Here we split the image by rows, doing it by columns is the same
         rows_per_part = np.ceil(SAT_image.shape[0] / N)
         for i in range(0, N):
             a = int(i*rows_per_part)
             b = int((i+1)*rows_per_part)
             part = SAT_image[a:b,:,:] 
-            np.save(tmp_folder + "/part" + str(i), part)
-            # Image.fromarray(part).save(new_folder + "/part" + str(i) + ".jpeg")
+            # Save each part as a numpy array
+            part_filename = os.path.join(tmp_folder, f"{name}{i}.npy")
+            np.save(part_filename, part)
     else:
-        print("Parts already exist")
+        print(f"The image seems to be already divided into chunks. name: {name}")
 
 
+def split_geoTIFF_to_parts(image_src, meta_data = None, n_splits = 10, tmp_folder = "tmp", name = "part"):
+    # Create a temporary folder to store the parts of the image    
+    if not os.path.exists(tmp_folder):
+        os.makedirs(tmp_folder)
+        
+    with rasterio.open(image_src) as src:
+        width, height = src.width, src.height
+                    
+        # Calculate width of each split
+        split_height  = height // n_splits
+        
+        for i in range(n_splits):
+            # Calculate window. The last split may need to include extra pixels to account for rounding
+            if i == n_splits - 1:  # Last split
+                window = Window(0, i * split_height, width, height - i * split_height)
+            else:
+                window = Window(0, i * split_height, width, split_height)
+            
+            # Read the data for the current window/split
+            window_data = src.read(window=window)
+            
+            # Define the output path for the current split
+            output_path = os.path.join(tmp_folder, f"{name}_{i+1}.tif")
+            
+            # Update the metadata for the split
+            out_meta = src.meta.copy()
+            out_meta.update({
+                'width': window.width,
+                'height': window.height,
+                'transform': rasterio.windows.transform(window, src.transform)
+            })
+            
+            # Save the split as a new GeoTIFF file
+            io.export_geoTIFF(output_path, window_data, out_meta, verbose = False)
+                
+                
 def align_maps(A, B):
     """
     A and B are two images that are supposed to have the same dimensions. 
@@ -439,7 +534,7 @@ def pansharpen(m, pan, psh, R = 1, G = 2, B = 3, NIR = 4, method = 'simple_brove
     # with rasterio.open(psh, 'w', **metadata_pan) as dst:
     #     dst.write(np.transpose(img_psh, [2, 0, 1]))
     
-    io.export_GEOtiff(psh, img_psh, metadata_pan)
+    io.export_geoTIFF(psh, img_psh, metadata_pan)
     return img_psh
             
             
@@ -485,14 +580,91 @@ class tilesGenerator():
         return map_pred
 
 
+def extract_extent(image_src, save = False):
+    bounding_box = image_src.bounds
+    polygon = box(*bounding_box)
+    vector_file = geopandas.GeoDataFrame(index=[0], geometry = [polygon], crs = image_src.crs)
+    if save:
+        vector_file.to_file("polygon_extent.json", driver = "GeoJSON")
+    image_src.close()
+    return vector_file
+
+
+
+## Supersed by 'split_satellite_with_AOI'
+def clip_satellite_with_AOI(satellite_image_file : str , AOI_file : geopandas.GeoDataFrame()):
+    with rasterio.open(satellite_image_file) as src:
+        # Clip the GeoTIFF
+        # Convert the AOI geometries to the format expected by rasterio.mask.mask
+        aoi_shapes = [feature["geometry"] for _, feature in AOI_file.iterrows()]
+        clipped, clipped_transform = mask(src, aoi_shapes, crop=True)
+        
+        # Update the metadata for the clipped raster
+        clipped_meta_data = src.meta.copy()
+        clipped_meta_data.update({
+            "driver": "GTiff",
+            "height": clipped.shape[1],
+            "width": clipped.shape[2],
+            "transform": clipped_transform
+        })
+    return clipped, clipped_meta_data 
+
+
+def split_satellite_with_AOI(satellite_image_file : str, AOI : geopandas.GeoDataFrame, 
+                             tmp_folder = "tmp", verbose = False):
+    """
+    Clip a GeoTIFF image into multiple smaller GeoTIFFs, each corresponding to 
+    a polygon from a GeoPandas GeoDataFrame. The polygons are separated.
+    """
+    # Create a tmp folder to store the small images    
+    if not os.path.exists(tmp_folder):
+        print("--creationg temporary folder")
+        os.makedirs(tmp_folder)
+        
+    print("--split image from AOIs into {} parts".format(len(AOI)))
+    with rasterio.open(satellite_image_file) as src:
+        # Iterate over the polygons in the GeoDataFrame
+        for index, row in AOI.iterrows():
+            # Get the polygon geometry in a format that rasterio accepts
+            geom = [mapping(row['geometry'])]
+            # Perform the clip
+            out_image, out_transform = mask(src, geom, crop=True)
+            out_meta = src.meta.copy()
+
+            # Update the metadata to reflect the number of layers,
+            # and the new transformation matrix
+            out_meta.update({"driver": "GTiff",
+                             "height": out_image.shape[1],
+                             "width": out_image.shape[2],
+                             "transform": out_transform})
+
+            # Path for the output GeoTIFF with the clip corresponding to the current polygon
+            output_geotiff = f'{index}.tif' # Naming each output file uniquely
+
+            # Write the clipped area to a new GeoTIFF
+            io.export_geoTIFF(tmp_folder + os.sep + output_geotiff, out_image, out_meta, verbose = verbose)
 
 
 
 
-
-
-
-
+def merge_geotiffs(input_files, output_file):
+    # Open all the input files
+    src_files_to_mosaic = []
+    for f in input_files:
+        src = gdal.Open(f)
+        src_files_to_mosaic.append(src)
+    
+    # Create a virtual raster that contains all the input files
+    vrt = gdal.BuildVRT("temporary.vrt", src_files_to_mosaic)
+    # Create the output file based on the virtual raster
+    gdal.Translate(output_file, vrt)
+    
+    # Clean up
+    vrt = None
+    for src in src_files_to_mosaic:
+        src = None
+       
+    os.remove("temporary.vrt")
 
 
 
