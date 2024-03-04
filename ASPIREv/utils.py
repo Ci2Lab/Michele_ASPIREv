@@ -12,9 +12,10 @@ from PIL import ImageTk
 from matplotlib import cm
 import time
 import yaml 
-
-       
-
+import shutil
+import os
+import warnings
+import functools
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -51,13 +52,13 @@ def convert_to_channel_last(SAT_image : np.array, verbose = True):
     """ Convert a satellite image from channel-first to channel-last
     """
     assert len(SAT_image.shape) == 3
+    
     if is_channel_first(SAT_image):
         old_shape = SAT_image.shape
         SAT_image = np.transpose(SAT_image, (1,2,0))
         new_shape = SAT_image.shape
         if verbose:
-            print("Converting to channel_last:")
-            print(str(old_shape) + "-->" + str(new_shape))
+            print("Converting to channel_last: {} --> {}".format(old_shape, new_shape))
     else:
         if verbose:
             print("image is already channel_last" + str(SAT_image.shape))
@@ -74,9 +75,7 @@ def convert_to_channel_first(SAT_image : np.array, verbose = True):
         SAT_image = np.transpose(SAT_image, (2,0,1))
         new_shape = SAT_image.shape
         if verbose:
-            print("Converting to first:")
-            print(str(old_shape) + "-->" + str(new_shape))
-        
+            print("Converting to channel_first: {} --> {}".format(old_shape, new_shape))       
     else:
         if verbose:
             print("image is already channel_first" + str(SAT_image.shape))
@@ -330,13 +329,38 @@ def open_dir(title=""):
     return dirname + "/"
     
 
-
-
-
 def export_array_as_image(array : np.array, filename = "output.png"):
     assert array.dtype == "uint8"
     im = Image.fromarray(array)
     im.save(filename)
+    
+    
+def delete_tmp_folder(tmp_folder):
+    """ Delete a temporarly folder. 
+    Examples of tmp folder are the ones created to split too large images 
+    for the tree segmentation or crown extraction
+    """
+    # delete the tmp folder
+    print("--deleting tmp_folder: {}".format(tmp_folder))
+    if os.path.isfile(tmp_folder) or os.path.islink(tmp_folder):
+        os.unlink(tmp_folder)
+    elif os.path.isdir(tmp_folder):
+        shutil.rmtree(tmp_folder)
+    
+    
+def deprecated(func):
+    """This is a decorator which can be used to mark functions
+    as deprecated. It will result in a warning being emitted
+    when the function is used."""
+    @functools.wraps(func)
+    def new_func(*args, **kwargs):
+        warnings.simplefilter('always', DeprecationWarning)  # turn off filter
+        warnings.warn("Call to deprecated function {}.".format(func.__name__),
+                      category=DeprecationWarning,
+                      stacklevel=2)
+        warnings.simplefilter('default', DeprecationWarning)  # reset filter
+        return func(*args, **kwargs)
+    return new_func    
 
         
     
