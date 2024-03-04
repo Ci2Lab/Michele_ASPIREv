@@ -24,7 +24,8 @@ sns.set_theme()
 #     # Memory growth must be set before GPUs have been initialized
 #     print(e)
         
-        
+
+import shutil        
 import os
 import pickle
 from sklearn.model_selection import train_test_split
@@ -150,8 +151,10 @@ class TreeSegmenter(RSClassifier.RSClassifier):
 
 
 
-    def generate_tree_map(self, image):
+    def generate_tree_map(self, image, MEMORY_LIMIT = 5, verbose = True, tmp_folder = "tmp_image_chunks"):
         if self.DLmodel is not None:
+            
+            assert utils.is_channel_last(image)
             # How much memory would the tiles consume roughly? in GB
             nb_classes = 1
             window_size = 2 * self.config['config_training']['patch_radius']
@@ -163,18 +166,17 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             print("Estimated memory {} GB \n". format(ESTIMATED_MEMORY))
             
             # if the data require less than 5 GB, then fit it all
-            if ESTIMATED_MEMORY < 5:
+            if ESTIMATED_MEMORY < MEMORY_LIMIT:
                 # tree mask can be computed a straight way
-                stiched_pred_map = self._generate_tree_map(image,  window_size, subdivisions)
+                stiched_pred_map = self._generate_tree_map(image,  window_size, subdivisions, verbose = verbose)
             else:
                 
                 if utils.confirmCommand("Image too large, split it?"):
                     # otherwise if the input image is too big, need to split it
                     # how many chunk? Each chunk is ~4GB, then we need N chunks
-                    N = int(np.ceil(ESTIMATED_MEMORY / 4))
+                    N = int(np.ceil(ESTIMATED_MEMORY / MEMORY_LIMIT))
                     print("Satellite image is split into {} parts".format(N))
-                    # Divide the image into N parts: each is saved temporarly (tmp folder is created). 
-                    tmp_folder = "tmp"
+                    # Divide the image into N parts: each is saved temporarly (tmp folder is created).                     
                     geo_utils.split_raster_to_parts(image, N, tmp_folder)
                     
                     stiched_pred_map = []
@@ -185,15 +187,16 @@ class TreeSegmenter(RSClassifier.RSClassifier):
                         part = np.load(tmp_folder + "/part" + str(i) + ".npy")
                         # Segment it
                         print("Segment part: " + str(i))
-                        stiched_pred_map.append(self._generate_tree_map(part, window_size, subdivisions))
+                        stiched_pred_map.append(self._generate_tree_map(part, window_size, subdivisions, verbose = verbose))
                         # Save the mask
                         print("Save predicted: " + str(i))
+                           
                         
                     # When all mask are created, merge them back together
                     stiched_pred_map = np.vstack(stiched_pred_map)
                     
                     # Delete the input image
-                    # TODO
+                    utils.delete_tmp_folder(tmp_folder)
                 else:
                     stiched_pred_map = None
                                   
@@ -203,9 +206,10 @@ class TreeSegmenter(RSClassifier.RSClassifier):
             print("--Model not loaded")
 
 
-    def _generate_tree_map(self, image, window_size, subdivisions):                    
+    def _generate_tree_map(self, image, window_size, subdivisions, verbose = True):                    
             image = (image / 255).astype('float32')
-            print("Segmenting trees with tiles smoothing function")
+            if verbose:
+                print("--Segmenting trees over tiles (with smoothing function)")
 
             stiched_pred_map = stitching.predict_img_with_smooth_windowing(image, window_size, subdivisions, nb_classes=1, 
                                           pred_func = self.DLmodel.predict)
@@ -253,7 +257,7 @@ class TreeSegmenter(RSClassifier.RSClassifier):
            
                     
         
-def binarize_treeMap(map_pred, thresholds):
+def binarize_treeMap(map_pred, thresholds, closing = True):
     
     """
     From a threshold list 'thresholds' containing one threshold per output
@@ -263,7 +267,10 @@ def binarize_treeMap(map_pred, thresholds):
     for i in range(map_pred.shape[-1]):
         # Per-pixel and per-channel comparison on a threshold to
         # binarize prediction masks:
-        map_pred[:, :, i] = (map_pred[:, :, i] > thresholds[i]).astype('uint8')    
+        map_pred[:, :, i] = (map_pred[:, :, i] > thresholds[i]).astype('uint8')
+        
+    if closing:
+        map_pred = refine_tree_mask(map_pred)
     return map_pred
 
 
